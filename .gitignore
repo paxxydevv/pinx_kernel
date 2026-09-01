@@ -1,0 +1,29 @@
+# Build artifacts
+build/
+
+# ISO staging directory
+IsoRoot/
+
+# Limine bootloader binaries (download via: git clone https://github.com/limine-bootloader/limine-binary.git)
+limine-binary/
+
+# Output binaries
+*.iso
+*.elf
+*.bin
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Compiled objects (extra safety)
+*.o
+*.a
+*.so
