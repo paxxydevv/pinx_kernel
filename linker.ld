@@ -22,6 +22,9 @@ SECTIONS
     .rodata : ALIGN(CONSTANT(MAXPAGESIZE))
     {
         *(.rodata .rodata.*)
+        *(.limine_requests_start)
+        *(.limine_requests)
+        *(.limine_requests_end)
         *(.note.gnu.property)
     } :rodata
 
