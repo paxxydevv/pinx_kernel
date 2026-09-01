@@ -1,7 +1,7 @@
 #include "includes/pinx/gdt.h"
 #include "includes/pinx/idt.h"
+#include "includes/pinx/graphics.h"
 #include "includes/3party/limine.h"
-
 __attribute__((used, section(".limine_requests_start")))
 static volatile uint64_t limine_requests_start_marker[] =
     LIMINE_REQUESTS_START_MARKER;
@@ -32,6 +32,7 @@ void kmain(void)
         }
     }
     struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
+    graphics_init(framebuffer);
     for (;;) {
         __asm__ volatile ("hlt");
     }

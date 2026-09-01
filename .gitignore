@@ -15,6 +15,7 @@ limine-binary/
 # Editor / IDE
 .vscode/
 .idea/
+.clangd
 *.swp
 *.swo
 *~
