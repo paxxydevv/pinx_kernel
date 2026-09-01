@@ -1,11 +1,11 @@
 # Pinx
 
-A bare-metal x86-64 operating system kernel built from scratch using C, C++, and x86 assembly. Boots via the [Limine](https://limine-bootloader.org/) bootloader on UEFI systems.
+A bare-metal x86-64 operating system kernel built from scratch using C and x86 assembly. Boots via the [Limine](https://limine-bootloader.org/) bootloader on UEFI systems.
 
 ## Features
 
-- Custom GDT (Global Descriptor Table) with long-mode code and data segments
-- UEFI boot support via Limine protocol
+- GDT
+- UEFI boot
 
 ## Prerequisites
 
@@ -49,24 +49,6 @@ make
 ```bash
 make run
 ```
-
-## Project Structure
-
-```
-.
-├── Makefile            # Build system
-├── linker.ld           # Kernel linker script
-├── limine.conf         # Limine bootloader config
-├── kernel/
-│   ├── main.c          # Kernel entry point
-│   ├── gdt.c           # GDT initialization
-│   ├── gdt_flush.S     # GDT reload assembly
-│   └── includes/
-│       ├── pinx/       # Kernel headers
-│       └── 3party/     # Third-party headers
-└── bin/                # Output directory
-```
-
 ## Building
 
 | Command        | Description                          |
