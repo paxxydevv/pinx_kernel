@@ -33,6 +33,10 @@ void kmain(void)
     }
     struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
     graphics_init(framebuffer);
+    draw_pixel(100, 100, 0xFF0000);
+    draw_char('a', 100, 150, 0xFF0000);
+    draw_string("Hello World", 100, 250, 0xFF0000);
+    
     for (;;) {
         __asm__ volatile ("hlt");
     }

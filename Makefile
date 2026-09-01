@@ -213,7 +213,7 @@ kernel: $(TARGET)
 $(BUILD_DIR)/%.c.o: $(KERNEL_DIR)/%.c
 	@mkdir -p $(dir $@)
 	@echo "  CC      $<"
-	$(CC) $(CFLAGS) -c $< -o $@
+	@$(CC) $(CFLAGS) -c $< -o $@
 
 # --------------------------------------------------
 # C++
@@ -222,17 +222,17 @@ $(BUILD_DIR)/%.c.o: $(KERNEL_DIR)/%.c
 $(BUILD_DIR)/%.cpp.o: $(KERNEL_DIR)/%.cpp
 	@mkdir -p $(dir $@)
 	@echo "  CXX     $<"
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	@$(CXX) $(CXXFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/%.cc.o: $(KERNEL_DIR)/%.cc
 	@mkdir -p $(dir $@)
 	@echo "  CXX     $<"
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	@$(CXX) $(CXXFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/%.cxx.o: $(KERNEL_DIR)/%.cxx
 	@mkdir -p $(dir $@)
 	@echo "  CXX     $<"
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	@$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # --------------------------------------------------
 # Assembly
@@ -245,17 +245,17 @@ $(BUILD_DIR)/%.cxx.o: $(KERNEL_DIR)/%.cxx
 $(BUILD_DIR)/%.S.o: $(KERNEL_DIR)/%.S
 	@mkdir -p $(dir $@)
 	@echo "  AS      $<"
-	$(CC) $(ARCH_FLAGS) -fno-pic $(INCLUDE_FLAGS) -c $< -o $@
+	@$(CC) $(ARCH_FLAGS) -fno-pic $(INCLUDE_FLAGS) -c $< -o $@
 
 $(BUILD_DIR)/%.s.o: $(KERNEL_DIR)/%.s
 	@mkdir -p $(dir $@)
 	@echo "  AS      $<"
-	$(CC) $(ARCH_FLAGS) -fno-pic $(INCLUDE_FLAGS) -c $< -o $@
+	@$(CC) $(ARCH_FLAGS) -fno-pic $(INCLUDE_FLAGS) -c $< -o $@
 
 $(BUILD_DIR)/%.asm.o: $(KERNEL_DIR)/%.asm
 	@mkdir -p $(dir $@)
 	@echo "  AS      $<"
-	$(CC) $(ARCH_FLAGS) $(INCLUDE_FLAGS) -x assembler -c $< -o $@
+	@$(CC) $(ARCH_FLAGS) $(INCLUDE_FLAGS) -x assembler -c $< -o $@
 
 # --------------------------------------------------
 # Link kernel
@@ -264,7 +264,7 @@ $(BUILD_DIR)/%.asm.o: $(KERNEL_DIR)/%.asm
 $(TARGET): $(OBJECTS) linker.ld
 	@mkdir -p $(dir $@)
 	@echo "  LD      $@"
-	$(LD) $(LDFLAGS) -o $@ $(OBJECTS)
+	@$(LD) $(LDFLAGS) -o $@ $(OBJECTS)
 
 # --------------------------------------------------
 # Prepare UEFI ISO root

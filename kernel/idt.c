@@ -1,7 +1,6 @@
 #include "includes/pinx/idt.h"
-#include <stdint.h>
 #include "includes/pinx/idt.h"
-
+#include <stdint.h>
 struct idt_entry {
     uint16_t offset_low;
     uint16_t selector;
