@@ -4,8 +4,7 @@ build/
 # ISO staging directory
 IsoRoot/
 
-# Limine bootloader binaries (download via: git clone https://github.com/limine-bootloader/limine-binary.git)
-limine-binary/
+
 
 # Output binaries
 *.iso
@@ -14,6 +13,7 @@ limine-binary/
 
 # Editor / IDE
 .vscode/
+.cache
 .idea/
 *.swp
 *.swo

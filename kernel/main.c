@@ -36,8 +36,6 @@ void kmain(void)
     kprintf("GDT: OK");
     idt_init();
     kprintf("IDT: OK");
-
-
     for (;;) {
         __asm__ volatile ("hlt");
     }
