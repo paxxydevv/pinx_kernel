@@ -23,6 +23,28 @@ sudo dnf groupinstall "Development Tools"
 sudo dnf install nasm xorriso qemu-system-x86 edk2-ovmf
 ```
 
+## OVMF (UEFI Firmware for QEMU)
+
+QEMU requires [OVMF](https://github.com/tianocore/edk2) to boot UEFI systems. The Makefile expects it at `/usr/share/edk2/x64/OVMF_CODE.4m.fd`.
+
+**Arch Linux:**
+```bash
+sudo pacman -S edk2-ovmf
+```
+OVMF is installed to `/usr/share/edk2/x64/OVMF_CODE.4m.fd` automatically.
+
+**Debian / Ubuntu:**
+```bash
+sudo apt install ovmf
+```
+The firmware is installed to `/usr/share/OVMF/OVMF_CODE.fd`. Update the path in the Makefile's `run` target accordingly.
+
+**Fedora:**
+```bash
+sudo dnf install edk2-ovmf
+```
+The firmware is installed to `/usr/share/edk2/edk2-x64/OVMF_CODE.fd`. Update the path in the Makefile's `run` target accordingly.
+
 ## Getting Started
 
 1. Clone the repository:
@@ -32,19 +54,14 @@ git clone https://github.com/paxxydevv/pinx.git
 cd pinx
 ```
 
-2. Download the Limine bootloader binaries:
 
-```bash
-git clone https://github.com/limine-bootloader/limine-binary.git --branch latest-binary --depth=1
-```
-
-3. Build the kernel and ISO:
+2. Build the kernel and ISO:
 
 ```bash
 make
 ```
 
-4. Run in QEMU:
+3. Run in QEMU:
 
 ```bash
 make run
