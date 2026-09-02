@@ -24,8 +24,6 @@ static volatile uint64_t limine_requests_end_marker[] =
 
 void kmain(void)
 {
-    gdt_init();
-    idt_init();
     if (framebuffer_request.response == 0 ||
         framebuffer_request.response->framebuffer_count < 1) {
         for (;;) {
@@ -34,8 +32,12 @@ void kmain(void)
     }
     struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
     graphics_init(framebuffer);
-    kprintf("Hello World!");
-    kprintf("NO!");
+    gdt_init();
+    kprintf("GDT: OK");
+    idt_init();
+    kprintf("IDT: OK");
+
+
     for (;;) {
         __asm__ volatile ("hlt");
     }
