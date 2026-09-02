@@ -59,7 +59,8 @@ COMMON_FLAGS := \
 	-Wnull-dereference \
 	-Wdouble-promotion \
 	-Wformat=2 \
-	-Werror=return-type
+	-Werror=return-type \
+	-O2
 
 # --------------------------------------------------
 # C flags
@@ -180,11 +181,15 @@ OBJECTS := \
 # Targets
 # --------------------------------------------------
 
-.PHONY: all kernel iso run clean
+.PHONY: all kernel iso run db clean
 
 all: iso
 
 kernel: $(TARGET)
+
+# Generate compile_commands.json for clangd (editor IntelliSense)
+db:
+	bear -- make kernel
 
 # --------------------------------------------------
 # C

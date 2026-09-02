@@ -1,8 +1,8 @@
 #include "pinx/gdt.h"
 #include "pinx/idt.h"
 #include "pinx/graphics/graphics.h"
+#include "pinx/terminal.h"
 #include "3party/limine.h"
-
 __attribute__((used, section(".limine_requests_start")))
 static volatile uint64_t limine_requests_start_marker[] =
     LIMINE_REQUESTS_START_MARKER;
@@ -34,10 +34,8 @@ void kmain(void)
     }
     struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
     graphics_init(framebuffer);
-    draw_pixel(100, 100, 0xFF0000);
-    draw_char('a', 100, 150, 0xFF0000);
-    draw_string("Hello Worldaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaassssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 100, 250, 0xFF0000);
-    
+    kprintf("Hello World!");
+    kprintf("NO!");
     for (;;) {
         __asm__ volatile ("hlt");
     }
