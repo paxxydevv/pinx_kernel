@@ -70,7 +70,7 @@ CFLAGS := \
 	$(ARCH_FLAGS) \
 	$(COMMON_FLAGS) \
 	$(INCLUDE_FLAGS) \
-	-std=c23
+	-std=c2x
 
 # --------------------------------------------------
 # C++ flags
@@ -80,7 +80,7 @@ CXXFLAGS := \
 	$(ARCH_FLAGS) \
 	$(COMMON_FLAGS) \
 	$(INCLUDE_FLAGS) \
-	-std=c++23 \
+	-std=c++2x \
 	-fno-exceptions \
 	-fno-rtti \
 	-fno-threadsafe-statics \
