@@ -1,8 +1,5 @@
-#ifndef PINX_IDT_H
-#define PINX_IDT_H
+#pragma once
 
 #include <stdint.h>
 
 void idt_init(void);
-
-#endif

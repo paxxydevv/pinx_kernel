@@ -1,6 +1,3 @@
-#ifndef PINX_GDT_H
-#define PINX_GDT_H
+#pragma once
 
 void gdt_init(void);
-
-#endif

@@ -1,0 +1,11 @@
+CompileFlags:
+  Add:
+    - "-Ikernel/includes"
+  Compiler: clang
+
+---
+If:
+  PathMatch: [.*\.c]
+CompileFlags:
+  Add:
+    - "-std=c23"

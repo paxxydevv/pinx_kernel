@@ -1,5 +1,5 @@
 #include <stdint.h>
-#include "includes/pinx/gdt.h"
+#include "pinx/gdt.h"
 
 struct gdt_entry {
     uint16_t limit_low;

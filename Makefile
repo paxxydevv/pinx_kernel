@@ -3,8 +3,7 @@ CXX := g++
 CC  := gcc
 LD  := ld
 
-KERNEL_DIR := kernel
-SRC_DIR    := $(KERNEL_DIR)/src
+KERNEL_DIR  := kernel
 INCLUDE_DIR := $(KERNEL_DIR)/includes
 
 BUILD_DIR  := build
@@ -100,17 +99,8 @@ LDFLAGS := \
 # --------------------------------------------------
 # Find source files
 #
-# We accept:
-#
-#   kernel/*.c
-#   kernel/*.cpp
-#   kernel/*.S
-#   kernel/*.s
-#
-# AND everything recursively underneath:
-#
-#   kernel/src/**
-#
+# Recursively finds all C, C++, and assembly files
+# under kernel/, excluding the includes directory.
 # --------------------------------------------------
 
 C_SOURCES := $(shell find \
@@ -144,19 +134,9 @@ ASM_SOURCES := $(shell find \
 # --------------------------------------------------
 # Convert source paths to object paths
 #
-# Example:
-#
-# kernel/main.cpp
-#     ->
-# build/main.cpp.o
-#
-# kernel/src/main.cpp
-#     ->
-# build/src/main.cpp.o
-#
-# kernel/src/drivers/ps2/keyboard.cpp
-#     ->
-# build/src/drivers/ps2/keyboard.cpp.o
+# Examples:
+#   kernel/main.c                -> build/main.c.o
+#   kernel/graphics/graphics.c   -> build/graphics/graphics.c.o
 # --------------------------------------------------
 
 C_OBJECTS := \
