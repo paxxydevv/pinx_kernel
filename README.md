@@ -28,7 +28,7 @@ sudo dnf install nasm xorriso qemu-system-x86 edk2-ovmf
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/pinx.git
+git clone https://github.com/paxxydevv/pinx.git
 cd pinx
 ```
 
