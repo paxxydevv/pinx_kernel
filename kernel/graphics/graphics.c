@@ -24,7 +24,7 @@ void draw_char(char c, uint64_t x, uint64_t y, uint32_t color)
 
     for (uint64_t row = 0; row < 8; row++) {
         for (uint64_t col = 0; col < 8; col++) {
-            if (bitmap[row] & (1u << (7u - col))) {
+            if (bitmap[row] & (1u << col)) {
                 draw_pixel(x + col, y + row, color);
             }
         }

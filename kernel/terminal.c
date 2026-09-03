@@ -2,9 +2,10 @@
 #include "../includes/pinx/graphics/graphics.h"
 static uint64_t cursor_x = 0;
 static uint64_t cursor_y = 0;
-void kputc(const char c) {
+static void kputc(const char c) {
     if (c == '\n') {
-        cursor_y = cursor_y + 20;
+        cursor_x = 0;
+        cursor_y = cursor_y + 30;
         return;
     }
     draw_char(c, cursor_x, cursor_y, 0xFFFFF);

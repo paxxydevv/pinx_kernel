@@ -3,6 +3,8 @@
 #include "pinx/graphics/graphics.h"
 #include "pinx/terminal.h"
 #include "3party/limine.h"
+#include "pinx/memory_management.h"
+#include <stdint.h>
 __attribute__((used, section(".limine_requests_start")))
 static volatile uint64_t limine_requests_start_marker[] =
     LIMINE_REQUESTS_START_MARKER;
@@ -17,7 +19,18 @@ static volatile struct limine_framebuffer_request framebuffer_request = {
     .revision = 0,
     .response = 0
 };
-
+__attribute__((used, section(".limine_requests")))
+volatile struct limine_memmap_request memmap_request = {
+    .id = LIMINE_MEMMAP_REQUEST_ID,
+    .revision = 0,
+    .response = 0
+};
+__attribute__((used, section(".limine_requests")))
+volatile struct limine_hhdm_request hhdm_request = {
+    .id = LIMINE_HHDM_REQUEST_ID,
+    .revision = 0,
+    .response = 0
+};
 __attribute__((used, section(".limine_requests_end")))
 static volatile uint64_t limine_requests_end_marker[] =
     LIMINE_REQUESTS_END_MARKER;
@@ -32,10 +45,14 @@ void kmain(void)
     }
     struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
     graphics_init(framebuffer);
-    gdt_init();
-    kprintf("GDT: OK");
+    gdt_init(); // Without gdt our idt might not work even if limine configured gdt..
+    kprintf("GDT: OK\n");
     idt_init();
-    kprintf("IDT: OK");
+    kprintf("IDT: OK\n");
+    pmm_init();
+    kprintf("PMM INIT: OK\n");
+    vmm_init();
+    kprintf("VMM INIT: OK\n");
     for (;;) {
         __asm__ volatile ("hlt");
     }
