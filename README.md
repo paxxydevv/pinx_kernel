@@ -9,6 +9,7 @@ A bare-metal x86-64 operating system kernel built from scratch using C and x86 a
 - PMM
 - VMM
 - KMALLOC [WIP]
+- KFREE [WIP]
 - PRITING TO THE FRAMEBUFFER
 - UEFI boot
 

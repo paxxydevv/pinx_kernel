@@ -53,6 +53,9 @@ void kmain(void)
     kprintf("PMM INIT: OK\n");
     vmm_init();
     kprintf("VMM INIT: OK\n");
+    kheap_init();
+    kprintf("KHEAP INIT: OK\n");
+    volatile int a = 2 / 0;
     for (;;) {
         __asm__ volatile ("hlt");
     }

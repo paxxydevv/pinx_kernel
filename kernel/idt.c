@@ -18,6 +18,23 @@ struct idt_ptr {
 static struct idt_entry idt[256];
 static struct idt_ptr idtr;
 extern void isr0(void);
+extern void isr1(void);
+extern void isr2(void);
+extern void isr3(void);
+extern void isr4(void);
+extern void isr5(void);
+extern void isr6(void);
+extern void isr7(void);
+extern void isr8(void);
+extern void isr10(void);
+extern void isr11(void);
+extern void isr12(void);
+extern void isr13(void);
+extern void isr14(void);
+extern void isr17(void);
+extern void isr18(void);
+extern void isr19(void);
+extern void isr21(void);
 static void idt_set_gate(
     uint8_t vector,
     uint64_t handler,
@@ -40,5 +57,22 @@ void idt_init(void) {
     idtr.limit = (uint16_t)(sizeof(idt) - 1);
     idtr.base  = (uint64_t)&idt;
     idt_set_gate(0, (uint64_t)isr0, 0x08, 0x8E);
+    idt_set_gate(1, (uint64_t)isr1, 0x08, 0x8E);
+    idt_set_gate(2, (uint64_t)isr2, 0x08, 0x8E);
+    idt_set_gate(3, (uint64_t)isr3, 0x08, 0x8E);
+    idt_set_gate(4, (uint64_t)isr4, 0x08, 0x8E);
+    idt_set_gate(5, (uint64_t)isr5, 0x08, 0x8E);
+    idt_set_gate(6, (uint64_t)isr6, 0x08, 0x8E);
+    idt_set_gate(7, (uint64_t)isr7, 0x08, 0x8E);
+    idt_set_gate(8, (uint64_t)isr8, 0x08, 0x8E);
+    idt_set_gate(10, (uint64_t)isr10, 0x08, 0x8E);
+    idt_set_gate(11, (uint64_t)isr11, 0x08, 0x8E);
+    idt_set_gate(12, (uint64_t)isr12, 0x08, 0x8E);
+    idt_set_gate(13, (uint64_t)isr13, 0x08, 0x8E);
+    idt_set_gate(14, (uint64_t)isr14, 0x08, 0x8E);
+    idt_set_gate(17, (uint64_t)isr17, 0x08, 0x8E);
+    idt_set_gate(18, (uint64_t)isr18, 0x08, 0x8E);
+    idt_set_gate(19, (uint64_t)isr19, 0x08, 0x8E);
+    idt_set_gate(21, (uint64_t)isr21, 0x08, 0x8E);
     __asm__ volatile ("lidt %0" : : "m"(idtr));
 }

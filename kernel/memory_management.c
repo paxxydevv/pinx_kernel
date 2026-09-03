@@ -7,7 +7,15 @@ static uint64_t *bitmap;
 static uint64_t bitmap_entries;
 #define PAGE_SIZE 4096
 #define PMM_NO_PAGE UINT64_MAX
+#define KHEAP_START 0xFFFF900000000000ULL
+#define KHEAP_END   0xFFFFA00000000000ULL
 static uint64_t *pml4;
+static struct heap_block *heap_start;
+struct heap_block {
+    uint64_t size;
+    bool free;
+    struct heap_block *next;
+};
 
 static uint64_t find_bitmap_region(uint64_t bitmap_size) {
     for (uint64_t i = 0; i < memmap_request.response->entry_count; i++) {
@@ -196,4 +204,74 @@ void vmm_unmap_page(uint64_t virtual) {
         : "r"(virtual)
         : "memory"
     );
+}
+void kheap_init() {
+    uint64_t page = pmm_alloc_page();
+    if (page == PMM_NO_PAGE)
+        return;
+    vmm_map_page(KHEAP_START, page);
+    heap_start = (struct heap_block *)KHEAP_START;
+    heap_start->size = PAGE_SIZE - sizeof(struct heap_block); // 4000 ISH bytes
+    heap_start->free = true;
+    heap_start->next = nullptr;
+}
+void *kmalloc(uint64_t size)
+{
+    if (size == 0)
+        return nullptr;
+    struct heap_block *current = heap_start;
+    while (current != nullptr) {
+        if (current->free && current->size >= size) {
+
+            if (current->size > size + sizeof(struct heap_block)) {
+                struct heap_block *next =
+                    (struct heap_block *)((uint8_t *)(current + 1) + size);
+
+                next->free = true;
+                next->next = current->next;
+                next->size =
+                    current->size - size - sizeof(struct heap_block);
+
+                current->size = size;
+                current->next = next;
+            }
+
+            current->free = false;
+
+            return (void *)(current + 1);
+        }
+
+        current = current->next;
+    }
+
+    return nullptr;
+}
+void coalesce(void)
+{
+    struct heap_block *current = heap_start;
+
+    while (current != nullptr && current->next != nullptr) {
+        struct heap_block *next = current->next;
+
+        if (current->free && next->free) {
+            uint8_t *current_end =
+                (uint8_t *)(current + 1) + current->size;
+
+            if (current_end == (uint8_t *)next) {
+                current->size += sizeof(struct heap_block) + next->size;
+                current->next = next->next;
+
+                continue;
+            }
+        }
+
+        current = current->next;
+    }
+}
+void kfree(void* ptr) {
+    if (ptr == nullptr)
+        return;
+    struct heap_block *block = (struct heap_block *)ptr - 1;
+    block->free = true;
+    coalesce();
 }
