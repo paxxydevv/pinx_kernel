@@ -1,6 +1,7 @@
 #include "pinx/irq.h"
 #include "pinx/apic.h"
 #include "pinx/terminal.h"
+#include "pinx/keyboard.h"
 #include <stdint.h>
 
 struct interrupt_frame {
@@ -15,6 +16,8 @@ void irq_common_handler(struct interrupt_frame *frame) {
 
     if (vector == APIC_TIMER_VECTOR) {
         apic_timer_irq();
+    } else if (vector == KB_IRQ_VECTOR) {
+        keyboard_irq();
     }
 
     apic_send_eoi();

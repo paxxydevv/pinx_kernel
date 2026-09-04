@@ -2,6 +2,11 @@
 #include "../includes/pinx/graphics/graphics.h"
 static uint64_t cursor_x = 0;
 static uint64_t cursor_y = 0;
+void kclear(uint32_t color) {
+    cursor_x = 0;
+    cursor_y = 0;
+    clear_screen(color);
+}
 static void kputc(const char c) {
     if (c == '\n') {
         cursor_x = 0;

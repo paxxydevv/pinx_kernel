@@ -4,8 +4,10 @@
 #include "pinx/terminal.h"
 #include "pinx/apic.h"
 #include "pinx/delay.h"
+#include "pinx/keyboard.h"
 #include "3party/limine.h"
 #include "pinx/mm/memory_management.h"
+#include "pinx/shell.h"
 #include <stdint.h>
 __attribute__((used, section(".limine_requests_start")))
 static volatile uint64_t limine_requests_start_marker[] =
@@ -16,7 +18,7 @@ static volatile uint64_t limine_base_revision[] =
     LIMINE_BASE_REVISION(6);
 
 __attribute__((used, section(".limine_requests")))
-static volatile struct limine_framebuffer_request framebuffer_request = {
+    volatile struct limine_framebuffer_request framebuffer_request = {
     .id = LIMINE_FRAMEBUFFER_REQUEST_ID,
     .revision = 0,
     .response = 0
@@ -65,26 +67,21 @@ void kmain(void)
     kprintf("VMM INIT: OK\n");
     kheap_init();
     kprintf("KHEAP INIT: OK\n");
-
     uint32_t tsc_freq = 0;
     if (tsc_freq_request.response != 0) {
         tsc_freq = (uint32_t)tsc_freq_request.response->frequency;
     } else {
         tsc_freq = 2000000000;
     }
-
     apic_init();
     kprintf("x2APIC: OK\n");
-
+    keyboard_init();
+    kprintf("KEYBOARD: OK\n");
     delay_init(tsc_freq);
     kprintf("APIC TIMER: OK\n");
-
+    sleep_ms(250);
+    init_shell();
     __asm__ volatile ("sti");
-
-    kprintf("Sleeping 1000ms...\n");
-    sleep_ms(1000);
-    kprintf("Sleep complete!\n");
-
     for (;;) {
         __asm__ volatile ("hlt");
     }
