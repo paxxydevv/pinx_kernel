@@ -46,9 +46,9 @@ void draw_string(const char* string, uint64_t x, uint64_t y, uint32_t color) {
 }
 
 void clear_screen(uint32_t color) {
-    for (int i = 0; i < fb->width; i++) {
-        for (int b = 0; b < fb->height; b++) {
-            draw_pixel(i, b, color);
+    for (uint64_t i = 0; i < fb->width; i++) {
+        for (uint64_t b = 0; b < fb->height; b++) {
+            draw_pixel(i, b, color); 
         }
     }
 }

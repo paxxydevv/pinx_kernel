@@ -2,8 +2,10 @@
 #include "pinx/idt.h"
 #include "pinx/graphics/graphics.h"
 #include "pinx/terminal.h"
+#include "pinx/apic.h"
+#include "pinx/delay.h"
 #include "3party/limine.h"
-#include "pinx/memory_management.h"
+#include "pinx/mm/memory_management.h"
 #include <stdint.h>
 __attribute__((used, section(".limine_requests_start")))
 static volatile uint64_t limine_requests_start_marker[] =
@@ -31,6 +33,14 @@ volatile struct limine_hhdm_request hhdm_request = {
     .revision = 0,
     .response = 0
 };
+
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_tsc_frequency_request tsc_freq_request = {
+    .id = LIMINE_TSC_FREQUENCY_REQUEST_ID,
+    .revision = 0,
+    .response = 0
+};
+
 __attribute__((used, section(".limine_requests_end")))
 static volatile uint64_t limine_requests_end_marker[] =
     LIMINE_REQUESTS_END_MARKER;
@@ -45,7 +55,7 @@ void kmain(void)
     }
     struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
     graphics_init(framebuffer);
-    gdt_init(); // Without gdt our idt might not work even if limine configured gdt..
+    gdt_init();
     kprintf("GDT: OK\n");
     idt_init();
     kprintf("IDT: OK\n");
@@ -55,7 +65,26 @@ void kmain(void)
     kprintf("VMM INIT: OK\n");
     kheap_init();
     kprintf("KHEAP INIT: OK\n");
-    volatile int a = 2 / 0;
+
+    uint32_t tsc_freq = 0;
+    if (tsc_freq_request.response != 0) {
+        tsc_freq = (uint32_t)tsc_freq_request.response->frequency;
+    } else {
+        tsc_freq = 2000000000;
+    }
+
+    apic_init();
+    kprintf("x2APIC: OK\n");
+
+    delay_init(tsc_freq);
+    kprintf("APIC TIMER: OK\n");
+
+    __asm__ volatile ("sti");
+
+    kprintf("Sleeping 1000ms...\n");
+    sleep_ms(1000);
+    kprintf("Sleep complete!\n");
+
     for (;;) {
         __asm__ volatile ("hlt");
     }

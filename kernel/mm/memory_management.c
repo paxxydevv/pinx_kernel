@@ -1,4 +1,4 @@
-#include "pinx/memory_management.h"
+#include "pinx/mm/memory_management.h"
 #include "3party/limine.h"
 #include <stdint.h>
 extern volatile struct limine_memmap_request memmap_request;
@@ -217,7 +217,7 @@ void kheap_init() {
 }
 void *kmalloc(uint64_t size)
 {
-    if (size == 0)
+    if (size == 0 || size == UINT64_MAX)
         return nullptr;
     struct heap_block *current = heap_start;
     while (current != nullptr) {

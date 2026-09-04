@@ -303,6 +303,8 @@ run: iso
 	qemu-system-x86_64 \
 		-M q35 \
 		-m 2G \
+		-cpu host \
+		-enable-kvm \
 		-drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
 		-cdrom $(ISO)
 

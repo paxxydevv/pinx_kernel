@@ -35,6 +35,24 @@ extern void isr17(void);
 extern void isr18(void);
 extern void isr19(void);
 extern void isr21(void);
+
+extern void irq32(void);
+extern void irq33(void);
+extern void irq34(void);
+extern void irq35(void);
+extern void irq36(void);
+extern void irq37(void);
+extern void irq38(void);
+extern void irq39(void);
+extern void irq40(void);
+extern void irq41(void);
+extern void irq42(void);
+extern void irq43(void);
+extern void irq44(void);
+extern void irq45(void);
+extern void irq46(void);
+extern void irq47(void);
+
 static void idt_set_gate(
     uint8_t vector,
     uint64_t handler,
@@ -74,5 +92,23 @@ void idt_init(void) {
     idt_set_gate(18, (uint64_t)isr18, 0x08, 0x8E);
     idt_set_gate(19, (uint64_t)isr19, 0x08, 0x8E);
     idt_set_gate(21, (uint64_t)isr21, 0x08, 0x8E);
+
+    idt_set_gate(32, (uint64_t)irq32, 0x08, 0x8E);
+    idt_set_gate(33, (uint64_t)irq33, 0x08, 0x8E);
+    idt_set_gate(34, (uint64_t)irq34, 0x08, 0x8E);
+    idt_set_gate(35, (uint64_t)irq35, 0x08, 0x8E);
+    idt_set_gate(36, (uint64_t)irq36, 0x08, 0x8E);
+    idt_set_gate(37, (uint64_t)irq37, 0x08, 0x8E);
+    idt_set_gate(38, (uint64_t)irq38, 0x08, 0x8E);
+    idt_set_gate(39, (uint64_t)irq39, 0x08, 0x8E);
+    idt_set_gate(40, (uint64_t)irq40, 0x08, 0x8E);
+    idt_set_gate(41, (uint64_t)irq41, 0x08, 0x8E);
+    idt_set_gate(42, (uint64_t)irq42, 0x08, 0x8E);
+    idt_set_gate(43, (uint64_t)irq43, 0x08, 0x8E);
+    idt_set_gate(44, (uint64_t)irq44, 0x08, 0x8E);
+    idt_set_gate(45, (uint64_t)irq45, 0x08, 0x8E);
+    idt_set_gate(46, (uint64_t)irq46, 0x08, 0x8E);
+    idt_set_gate(47, (uint64_t)irq47, 0x08, 0x8E);
+
     __asm__ volatile ("lidt %0" : : "m"(idtr));
 }
