@@ -1,8 +1,6 @@
 #include "pinx/graphics/graphics.h"
 #include "3party/limine.h"
 #include "pinx/graphics/bitmap.h"
-
-extern volatile struct limine_framebuffer_request framebuffer_request;
 static struct limine_framebuffer *fb;
 void graphics_init(struct limine_framebuffer *framebuffer) {
     fb = framebuffer;

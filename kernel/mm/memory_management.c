@@ -100,7 +100,7 @@ void vmm_init(void) {
     uint64_t pml4_physical = cr3 & ~0xFFFULL;
     pml4 = (uint64_t *)(pml4_physical + hhdm_request.response->offset);
 }
-void vmm_map_page(uint64_t virtual, uint64_t physical) {
+void vmm_map_page_flags(uint64_t virtual, uint64_t physical, uint64_t flags) {
     uint64_t pml4_index = (virtual >> 39) & 0x1FF;
     uint64_t pdpt_index = (virtual >> 30) & 0x1FF;
     uint64_t pd_index   = (virtual >> 21) & 0x1FF;
@@ -153,7 +153,15 @@ void vmm_map_page(uint64_t virtual, uint64_t physical) {
     pd_entry = pd[pd_index];
     uint64_t pt_physical = pd_entry & ~0xFFFULL;
     uint64_t *pt = (uint64_t *)(pt_physical + hhdm_request.response->offset);
-    pt[pt_index] = physical | 0x3;
+    pt[pt_index] = physical | flags;
+}
+
+void vmm_map_page(uint64_t virtual, uint64_t physical) {
+    vmm_map_page_flags(virtual, physical, 0x3);
+}
+
+void vmm_map_mmio(uint64_t virtual, uint64_t physical) {
+    vmm_map_page_flags(virtual, physical, 0x1B);
 }
 void vmm_unmap_page(uint64_t virtual) {
     uint64_t pml4_index = (virtual >> 39) & 0x1FF;

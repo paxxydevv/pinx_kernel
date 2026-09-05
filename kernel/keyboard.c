@@ -94,26 +94,65 @@ static uint8_t apply_caps_lock(uint8_t c, uint8_t is_alpha) {
     return c;
 }
 
+static void kbd_cmd(uint8_t cmd) {
+    for (uint32_t i = 0; i < 1000; i++) {
+        if (!(inb(KB_CMD_PORT) & 0x02)) {
+            outb(KB_CMD_PORT, cmd);
+            return;
+        }
+        io_wait();
+    }
+}
+
+static void kbd_write(uint8_t val) {
+    for (uint32_t i = 0; i < 1000; i++) {
+        if (!(inb(KB_CMD_PORT) & 0x02)) {
+            outb(KB_DATA_PORT, val);
+            return;
+        }
+        io_wait();
+    }
+}
+
+static uint8_t kbd_read(void) {
+    for (uint32_t i = 0; i < 1000; i++) {
+        if (inb(KB_CMD_PORT) & 0x01) {
+            return inb(KB_DATA_PORT);
+        }
+        io_wait();
+    }
+    return 0;
+}
+
+static void kbd_flush(void) {
+    while (inb(KB_CMD_PORT) & 0x01) {
+        inb(KB_DATA_PORT);
+        io_wait();
+    }
+}
+
 void keyboard_init(void) {
-    outb(KB_CMD_PORT, 0xAD);
-    inb(KB_DATA_PORT);
+    kbd_cmd(0xAD);
+    kbd_flush();
 
-    outb(KB_CMD_PORT, 0xAE);
-    inb(KB_DATA_PORT);
+    kbd_cmd(0x20);
+    uint8_t config = kbd_read();
+    config |= 0x01;
+    config |= 0x40;
+    config &= ~0x10u;
+    kbd_cmd(0x60);
+    kbd_write(config);
 
-    uint8_t status = inb(KB_CMD_PORT);
-    status = (uint8_t)(status | 1);
-    status = (uint8_t)(status & ~0x10u);
-    outb(KB_CMD_PORT, 0x60);
-    outb(KB_DATA_PORT, status);
+    kbd_cmd(0xAE);
 
-    outb(KB_DATA_PORT, 0xF4);
-    inb(KB_DATA_PORT);
+    kbd_write(0xF4);
+    kbd_read();
 
     shift_held = 0;
     ctrl_held = 0;
     alt_held = 0;
     caps_lock = 0;
+    extended_prefix = 0;
     kb_head = 0;
     kb_tail = 0;
 }

@@ -57,6 +57,7 @@ void kmain(void)
     }
     struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
     graphics_init(framebuffer);
+    kprintf("GRAPHICS_SUB: OK");
     gdt_init();
     kprintf("GDT: OK\n");
     idt_init();
@@ -66,7 +67,7 @@ void kmain(void)
     vmm_init();
     kprintf("VMM INIT: OK\n");
     kheap_init();
-    kprintf("KHEAP INIT: OK\n");
+    kprintf("KERNEL HEAP INIT: OK\n");
     uint32_t tsc_freq = 0;
     if (tsc_freq_request.response != 0) {
         tsc_freq = (uint32_t)tsc_freq_request.response->frequency;
@@ -79,9 +80,10 @@ void kmain(void)
     kprintf("KEYBOARD: OK\n");
     delay_init(tsc_freq);
     kprintf("APIC TIMER: OK\n");
-    sleep_ms(250);
-    init_shell();
+    sleep_ms(100);
     __asm__ volatile ("sti");
+    init_shell();
+    run_shell();
     for (;;) {
         __asm__ volatile ("hlt");
     }

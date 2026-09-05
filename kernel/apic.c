@@ -3,12 +3,48 @@
 #include "pinx/msr.h"
 #include "pinx/io.h"
 #include "pinx/terminal.h"
+#include "pinx/keyboard.h"
+#include "pinx/mm/memory_management.h"
 #include <stdint.h>
+
+#define IOAPIC_BASE 0xFEC00000ULL
+#define IOAPIC_VIRT 0xFFFFC00000000000ULL
+#define IOAPIC_IOREGSEL 0x00
+#define IOAPIC_IOWIN 0x10
 
 static volatile uint32_t apic_ticks = 0;
 
 static inline void x2apic_write(uint32_t reg, uint32_t val) {
     wrmsr(reg, val);
+}
+
+static volatile uint32_t *ioapic_addr(uint32_t reg) {
+    return (volatile uint32_t *)(IOAPIC_VIRT + reg);
+}
+
+static uint32_t ioapic_read(uint32_t reg) {
+    *ioapic_addr(IOAPIC_IOREGSEL) = reg;
+    return *ioapic_addr(IOAPIC_IOWIN);
+}
+
+static void ioapic_write(uint32_t reg, uint32_t val) {
+    *ioapic_addr(IOAPIC_IOREGSEL) = reg;
+    *ioapic_addr(IOAPIC_IOWIN) = val;
+}
+
+static void ioapic_route_pin(uint8_t pin, uint8_t vector) {
+    uint32_t reg_low = 0x10 + (2 * pin);
+    uint32_t reg_high = reg_low + 1;
+
+    uint32_t low = vector
+                 | (0 << 8)   /* fixed delivery        */
+                 | (0 << 11)  /* physical destination  */
+                 | (0 << 13)  /* active-high           */
+                 | (0 << 15)  /* edge triggered        */
+                 | (0 << 16); /* unmasked              */
+
+    ioapic_write(reg_low, low);
+    ioapic_write(reg_high, 0); /* destination APIC ID 0 */
 }
 
 static inline uint32_t x2apic_read(uint32_t reg) {
@@ -35,6 +71,9 @@ void apic_init(void) {
 
     outb(0x21, 0xFF);
     outb(0xA1, 0xFF);
+
+    vmm_map_mmio(IOAPIC_VIRT, IOAPIC_BASE);
+    ioapic_route_pin(1, KB_IRQ_VECTOR);
 }
 
 void apic_send_eoi(void) {
