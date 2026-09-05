@@ -22,14 +22,13 @@ Install the following packages on your system:
 
 ```bash
 # Arch Linux
-sudo pacman -S base-devel gcc nasm xorriso qemu-full edk2-ovmf
+sudo pacman -S clang lld nasm xorriso qemu-full edk2-ovmf
 
 # Debian / Ubuntu
-sudo apt install build-essential nasm xorriso qemu-system-x86 ovmf
+sudo apt install clang lld nasm xorriso qemu-system-x86 ovmf
 
 # Fedora
-sudo dnf groupinstall "Development Tools"
-sudo dnf install nasm xorriso qemu-system-x86 edk2-ovmf
+sudo dnf install clang lld nasm xorriso qemu-system-x86 edk2-ovmf
 ```
 
 ## OVMF (UEFI Firmware for QEMU)

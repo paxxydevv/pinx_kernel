@@ -1,5 +1,24 @@
 #include <stdint.h>
 #include "pinx/terminal.h"
+#include "3party/limine.h"
+
+extern volatile struct limine_hhdm_request hhdm_request;
+
+static void kprintf_hex(const char *label, uint64_t value)
+{
+    char buf[19];
+    buf[0] = '0';
+    buf[1] = 'x';
+    for (int i = 17; i >= 2; i--) {
+        uint64_t nib = value & 0xF;
+        buf[i] = (char)(nib < 10 ? '0' + nib : 'a' + (nib - 10));
+        value >>= 4;
+    }
+    buf[18] = '\0';
+    kprintf(label);
+    kprintf(buf);
+    kprintf("\n");
+}
 
 static void exception_fatal(const char *name, uint64_t vector)
 {
@@ -77,9 +96,23 @@ void exception_general_protection(void)
     exception_fatal("General Protection Fault (13)", 13);
 }
 
-void exception_page_fault(void)
+void exception_page_fault(uint64_t rip, uint64_t error_code)
 {
-    exception_fatal("Page Fault (14)", 14);
+    uint64_t cr2;
+    __asm__ volatile ("mov %%cr2, %0" : "=r"(cr2));
+
+    kprintf("EXCEPTION: Page Fault (14)\n");
+    kprintf_hex("CR2: ", cr2);
+    kprintf_hex("RIP: ", rip);
+    kprintf("ERR: ");
+    kprintf_hex("", error_code);
+    kprintf("(bit0=P present, bit1=W write, bit2=U user)\n");
+    kprintf_hex("HHDM: ", hhdm_request.response != 0 ? hhdm_request.response->offset : 0);
+    if (cr2 == 0xFFFF900000000000ULL)
+        kprintf("NOTE: CR2 == KHEAP_START (heap base was not mapped)\n");
+    for (;;) {
+        __asm__ volatile ("hlt");
+    }
 }
 
 void exception_alignment_check(void)

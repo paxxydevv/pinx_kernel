@@ -17,36 +17,39 @@ struct heap_block {
     struct heap_block *next;
 };
 
-static uint64_t find_bitmap_region(uint64_t bitmap_size) {
+void pmm_init() {
+    if (memmap_request.response == nullptr)
+        return;
+    uint64_t highest_address = 0;
+    uint64_t largest_base = 0;
+    uint64_t largest_len = 0;
+
     for (uint64_t i = 0; i < memmap_request.response->entry_count; i++) {
         struct limine_memmap_entry *entry = memmap_request.response->entries[i];
 
         if (entry->type != LIMINE_MEMMAP_USABLE)
             continue;
-        if (entry->length >= bitmap_size)
-            return entry->base;
-    }
-    return 0;
-}
-void pmm_init() {
-    if (memmap_request.response == nullptr)
-        return;
-    uint64_t highest_address = 0;
-
-    for (uint64_t i = 0; i < memmap_request.response->entry_count; i++) {
-        struct limine_memmap_entry *entry = memmap_request.response->entries[i];
+        if (entry->length > largest_len) {
+            largest_len = entry->length;
+            largest_base = entry->base;
+        }
         uint64_t end = entry->base + entry->length;
         if (end > highest_address) {
             highest_address = end;
         }
     }
+    if (largest_len == 0)
+        return;
     uint64_t total_pages = highest_address / 4096;
     bitmap_entries = (total_pages + 63) / 64;
     uint64_t bitmap_size = bitmap_entries * sizeof(uint64_t);
-    uint64_t bitmap_physical = find_bitmap_region(bitmap_size);
-    if (bitmap_physical == 0)
-        return;
     uint64_t bitmap_pages = (bitmap_size + PAGE_SIZE - 1) / PAGE_SIZE;
+
+    if (bitmap_pages > largest_len / PAGE_SIZE)
+        bitmap_pages = largest_len / PAGE_SIZE;
+
+    uint64_t bitmap_physical = largest_base + largest_len - bitmap_pages * PAGE_SIZE;
+    bitmap_physical &= ~(uint64_t)(PAGE_SIZE - 1);
     bitmap = (uint64_t *)(bitmap_physical + hhdm_request.response->offset);
     for (uint64_t i = 0; i < bitmap_entries; i++) {
         bitmap[i] = UINT64_MAX;

@@ -1,7 +1,7 @@
 
-CXX := g++
-CC  := gcc
-LD  := ld
+CXX := clang++
+CC  := clang
+LD  := ld.lld
 
 KERNEL_DIR  := kernel
 INCLUDE_DIR := $(KERNEL_DIR)/includes
@@ -21,7 +21,7 @@ TARGET := $(BUILD_DIR)/kernel.elf
 
 ARCH_FLAGS := \
 	-m64 \
-	-march=x86-64 \
+	-march=x86-64-v2 \
 	-mcmodel=kernel \
 	-mno-red-zone \
 	-mno-mmx \
@@ -60,7 +60,8 @@ COMMON_FLAGS := \
 	-Wdouble-promotion \
 	-Wformat=2 \
 	-Werror=return-type \
-	-O2
+	-O2 \
+	-flto=thin
 
 # --------------------------------------------------
 # C flags
@@ -95,6 +96,7 @@ LDFLAGS := \
 	-m elf_x86_64 \
 	-nostdlib \
 	-no-pie \
+	--lto-O2 \
 	-T linker.ld
 
 # --------------------------------------------------

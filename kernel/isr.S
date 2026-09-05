@@ -149,6 +149,8 @@ isr13:
 .type   isr14, @function
 isr14:
     cli
+    movq 8(%rsp), %rdi
+    movq (%rsp), %rsi
     call exception_page_fault
 1:
     hlt
