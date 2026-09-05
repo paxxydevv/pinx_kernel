@@ -12,10 +12,10 @@ A bare-metal x86-64 operating system kernel built from scratch using C and x86 a
 - KFREE
 - PRITING TO THE FRAMEBUFFER
 - UEFI boot
-- PIC [WIP]
-- X2APIC [WIP]
+- LAPIC 
+- X2APIC
 - FS [WIP]
-- SCHEDULER [WIP]
+- DEBUG SHELL[WIP]
 ## Prerequisites
 
 Install the following packages on your system:
