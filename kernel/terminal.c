@@ -28,13 +28,13 @@ void kprintf(const char *text) {
 
 void draw_cursor(void) {
     for (uint64_t i = 0; i < 8; i++) {
-        draw_pixel(cursor_x + i, cursor_y + 8, 0xFFFFFF); // Could uses a underline.
+        draw_pixel(cursor_x + i, cursor_y + 8, 0xFFFFFF); // Could uses a underline. or whatever
     }
 }
 
 void erase_cursor(void) {
     for (uint64_t i = 0; i < 8; i++) {
-        draw_pixel(cursor_x + i, cursor_y + 8, 0x000000); // Could use a underline.
+        draw_pixel(cursor_x + i, cursor_y + 8, 0x000000); // Could use a underline. or whatever
     }
 }
 
