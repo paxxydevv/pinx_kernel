@@ -1,6 +1,6 @@
 
-CXX := clang++
-CC  := clang
+CXX := g++
+CC  := gcc
 LD  := ld.lld
 
 KERNEL_DIR  := kernel
@@ -12,6 +12,27 @@ ISO        := $(BUILD_DIR)/pinx.iso
 
 LIMINE_DIR := limine-binary
 LIMINE     := $(LIMINE_DIR)/limine
+
+# OVMF (UEFI firmware) paths differ between distributions.
+OVMF_CODE := $(firstword \
+	$(wildcard /usr/share/OVMF/OVMF_CODE.fd) \
+	$(wildcard /usr/share/OVMF/OVMF_CODE_4M.fd) \
+	$(wildcard /usr/share/edk2/ovmf/OVMF_CODE.fd) \
+	$(wildcard /usr/share/edk2/x64/OVMF_CODE.4m.fd) \
+	$(wildcard /usr/share/edk2/OvmfX64/OVMF_CODE.fd) \
+	$(wildcard /usr/share/edk2-ovmf/OVMF_CODE.fd) \
+	$(wildcard /usr/share/qemu/ovmf-x86_64-code.bin) \
+)
+
+OVMF_VARS := $(firstword \
+	$(wildcard /usr/share/OVMF/OVMF_VARS.fd) \
+	$(wildcard /usr/share/OVMF/OVMF_VARS_4M.fd) \
+	$(wildcard /usr/share/edk2/ovmf/OVMF_VARS.fd) \
+	$(wildcard /usr/share/edk2/x64/OVMF_VARS.4m.fd) \
+	$(wildcard /usr/share/edk2/OvmfX64/OVMF_VARS.fd) \
+	$(wildcard /usr/share/edk2-ovmf/OVMF_VARS.fd) \
+	$(wildcard /usr/share/qemu/ovmf-x86_64-vars.bin) \
+)
 
 TARGET := $(BUILD_DIR)/kernel.elf
 
@@ -60,8 +81,7 @@ COMMON_FLAGS := \
 	-Wdouble-promotion \
 	-Wformat=2 \
 	-Werror=return-type \
-	-O2 \
-	-flto=thin
+	-O2
 
 # --------------------------------------------------
 # C flags
@@ -96,7 +116,7 @@ LDFLAGS := \
 	-m elf_x86_64 \
 	-nostdlib \
 	-no-pie \
-	--lto-O2 \
+	-O2 \
 	-T linker.ld
 
 # --------------------------------------------------
@@ -302,12 +322,14 @@ iso: $(TARGET) limine.conf
 run: iso
 	@echo "  RUN     Pinx in QEMU"
 
+	@cp $(OVMF_VARS) $(BUILD_DIR)/OVMF_VARS.fd
 	qemu-system-x86_64 \
 		-M q35 \
 		-m 2G \
 		-cpu host \
 		-enable-kvm \
-		-drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
+		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE) \
+		-drive if=pflash,format=raw,file=$(BUILD_DIR)/OVMF_VARS.fd \
 		-cdrom $(ISO)
 
 # --------------------------------------------------

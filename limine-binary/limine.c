@@ -846,9 +846,10 @@ static bool gpt_verify_header(const struct gpt_table_header *header,
         return false;
     }
 
-    // Nothing above relates the table to the medium it was found on.
-    if (device_blocks != 0
-     && (last_usable >= device_blocks || array_end > device_blocks)) {
+    // Only the array has to be readable: LastUsableLBA is the table's claim
+    // about the medium, and where a partition really overruns the device it is
+    // refused where it is used.
+    if (device_blocks != 0 && array_end > device_blocks) {
         return false;
     }
 
@@ -875,7 +876,13 @@ static bool device_block_present(uint64_t block, uint64_t lb_size) {
         return false;
     }
 
-    return device_read_raw(&probe, loc, 1);
+    // The end of the medium is found by probing past it: a block device refuses
+    // that seek where a regular file accepts it, and neither is an error here.
+    if (set_pos(device, loc) != 0) {
+        return false;
+    }
+
+    return fread(&probe, 1, 1, device) == 1;
 }
 
 static bool device_last_block(uint64_t lb_size, uint64_t *out) {
@@ -938,10 +945,15 @@ static bool gpt_locate_header(struct gpt_table_header *header,
     // Probed, not taken from the device: the size a table was written for
     // belongs to the image. 2048 is optical, and matches device_init().
     uint64_t lb_guesses[] = { 512, 2048, 4096 };
-    bool protective = gpt_protective_mbr();
     // A header that fails its array CRC has already paid for it, so the budget
     // covers the two locations the recovery rule names rather than one call.
     uint64_t budget = GPT_MAX_ARRAY_SIZE * 2;
+
+    // A disk reformatted to MBR keeps the GPT the new table did not reach, and
+    // LBA 0 is what says whether that GPT is still live.
+    if (!gpt_protective_mbr()) {
+        return false;
+    }
 
     for (size_t i = 0; i < SIZEOF_ARRAY(lb_guesses); i++) {
         uint64_t lb_size = lb_guesses[i], last, loc, device_blocks = 0;
@@ -963,8 +975,10 @@ static bool gpt_locate_header(struct gpt_table_header *header,
             // The signature is what identifies the block as a header at all,
             // so only a header that failed its CRC is followed. Without it the
             // field is not an LBA, it is whatever happens to be at offset 32.
+            // Seeking past the device is the cost: set_pos() walks in 1 GiB steps.
             if (strncmp(header->signature, "EFI PART", 8) == 0
-             && ENDSWAP(header->alternate_lba) > 1) {
+             && ENDSWAP(header->alternate_lba) > 1
+             && have_last && ENDSWAP(header->alternate_lba) <= last) {
                 candidates[candidate_count++] = ENDSWAP(header->alternate_lba);
             }
         }
@@ -979,12 +993,6 @@ static bool gpt_locate_header(struct gpt_table_header *header,
                 candidates[0] = candidates[1];
                 candidates[1] = claimed;
             }
-        }
-
-        // A disk reformatted to MBR keeps a backup header the new table did not
-        // reach, and LBA 0 is what says whether that header is still live.
-        if (!protective) {
-            continue;
         }
 
         for (j = 0; j < candidate_count; j++) {
@@ -1056,6 +1064,10 @@ static int bios_install(int argc, char *argv[]) {
                 fprintf(stderr, "error: Uninstall data file has a zero-length name!\n");
                 return EXIT_FAILURE;
             }
+        } else if (device != NULL && argv[i][0] == '-') {
+            // A device path may begin with a dash where a partition index cannot.
+            bios_install_usage();
+            return EXIT_FAILURE;
         } else {
             if (device != NULL) { // [GPT partition index]
                 part_ndx = argv[i]; // TODO: Make this non-positional?
@@ -1145,8 +1157,29 @@ static int bios_install(int argc, char *argv[]) {
         } part_to_conv[4];
         size_t part_to_conv_i = 0;
 
+        // The cap bounds the work, so a table declaring more entries than it
+        // is one the loop below cannot examine in full: the refusals it makes
+        // per entry would silently not cover the rest.
+        if (ENDSWAP(gpt_header.number_of_partition_entries) > MAX_GPT_PARTITIONS) {
+            if (!quiet) {
+                fprintf(stderr, "GPT declares more than %d partition entries, will not convert GPT.\n",
+                        MAX_GPT_PARTITIONS);
+            }
+            goto no_mbr_conv;
+        }
+
         uint64_t part_entry_base;
         if (mul_u64_overflow(ENDSWAP(gpt_header.partition_entry_lba), lb_size, &part_entry_base)) {
+            goto no_mbr_conv;
+        }
+
+        // The converted entries describe the medium, and LastUsableLBA is the
+        // table's claim about it rather than a measurement of it.
+        uint64_t conv_last_block;
+        if (!device_last_block(lb_size, &conv_last_block)) {
+            if (!quiet) {
+                fprintf(stderr, "Could not determine the size of the device, will not convert GPT.\n");
+            }
             goto no_mbr_conv;
         }
 
@@ -1158,8 +1191,8 @@ static int bios_install(int argc, char *argv[]) {
             }
             device_read(&gpt_entry, entry_offset, sizeof(struct gpt_entry));
 
-            if (gpt_entry.unique_partition_guid[0] == 0 &&
-                gpt_entry.unique_partition_guid[1] == 0) {
+            if (gpt_entry.partition_type_guid[0] == 0 &&
+                gpt_entry.partition_type_guid[1] == 0) {
                 continue;
             }
 
@@ -1179,6 +1212,24 @@ static int bios_install(int argc, char *argv[]) {
             if (end_lba < start_lba) {
                 if (!quiet) {
                     fprintf(stderr, "Partition %" PRIi64 " ends before it starts, will not convert GPT.\n", i + 1);
+                }
+                goto no_mbr_conv;
+            }
+
+            // The alternate erase resumes past LastUsableLBA. At the low end
+            // the primary reserve is floored at two blocks, so what keeps a
+            // converted partition clear of it is the 63-sector check below.
+            if (start_lba < ENDSWAP(gpt_header.first_usable_lba)
+             || end_lba > ENDSWAP(gpt_header.last_usable_lba)) {
+                if (!quiet) {
+                    fprintf(stderr, "Partition %" PRIi64 " lies outside the GPT usable range, will not convert GPT.\n", i + 1);
+                }
+                goto no_mbr_conv;
+            }
+
+            if (end_lba > conv_last_block) {
+                if (!quiet) {
+                    fprintf(stderr, "Partition %" PRIi64 " ends past the device, will not convert GPT.\n", i + 1);
                 }
                 goto no_mbr_conv;
             }
@@ -1247,7 +1298,9 @@ static int bios_install(int argc, char *argv[]) {
         uint64_t alt_reserve = 1 + (16384 + lb_size - 1) / lb_size;
 
         if (gpt_from_alternate) {
-            alternates[alternate_count++] = gpt_header_lba;
+            if (gpt_header_lba >= alt_reserve) {
+                alternates[alternate_count++] = gpt_header_lba;
+            }
         } else if (ENDSWAP(gpt_header.alternate_lba) >= alt_reserve) {
             alternates[alternate_count++] = ENDSWAP(gpt_header.alternate_lba);
         }
@@ -1296,10 +1349,14 @@ static int bios_install(int argc, char *argv[]) {
         // ... nuke primary GPT + protective MBR. The reserve is the protective
         // MBR, the header, and the 16384 bytes UEFI reserves for the entry
         // array whatever the block size -- 34 blocks at 512, 10 at 2048, 6 at
-        // 4096. The header's own value bounds it where that is smaller.
+        // 4096. The header's own value bounds it where that is smaller, above
+        // the two blocks a GPT-aware reader consults whatever the header says.
         uint64_t first_usable = ENDSWAP(gpt_header.first_usable_lba);
         uint64_t reserve_max = 2 + (16384 + lb_size - 1) / lb_size;
         uint64_t reserve = first_usable < reserve_max ? first_usable : reserve_max;
+        if (reserve < 2) {
+            reserve = 2;
+        }
 
         for (uint64_t i = 0; i < reserve; i++) {
             device_write(empty_lba, i * lb_size, lb_size);
@@ -1527,8 +1584,8 @@ part_too_low:
             }
             device_read(&gpt_entry, entry_off, sizeof(struct gpt_entry));
 
-            if (gpt_entry.unique_partition_guid[0] == 0 &&
-              gpt_entry.unique_partition_guid[1] == 0) {
+            if (gpt_entry.partition_type_guid[0] == 0 &&
+              gpt_entry.partition_type_guid[1] == 0) {
                 fprintf(stderr, "error: No such partition: %" PRIu32 ".\n", partition_num + 1);
                 goto cleanup;
             }
@@ -1569,6 +1626,66 @@ bios_boot_autodetected:;
         if (ending_lba < starting_lba) {
             fprintf(stderr, "error: Partition %" PRIu32 " has ending LBA less than starting LBA.\n", partition_num + 1);
             goto cleanup;
+        }
+
+        // The usable range is the header's own, so a crafted one moves it; the
+        // reserve UEFI states is the floor it cannot move.
+        if (starting_lba < 2 + (16384 + lb_size - 1) / lb_size) {
+            fprintf(stderr, "error: Partition %" PRIu32 " starts inside the GPT reserve.\n", partition_num + 1);
+            goto cleanup;
+        }
+
+        if (starting_lba < ENDSWAP(gpt_header.first_usable_lba)
+         || ending_lba > ENDSWAP(gpt_header.last_usable_lba)) {
+            fprintf(stderr, "error: Partition %" PRIu32 " lies outside the GPT usable range.\n", partition_num + 1);
+            goto cleanup;
+        }
+
+        // The alternate GPT sits at the end of the medium as the primary sits
+        // at the start, and no header can move where the medium ends.
+        uint64_t last_block;
+        if (!device_last_block(lb_size, &last_block)) {
+            fprintf(stderr, "error: Could not determine the size of the device.\n");
+            goto cleanup;
+        }
+        uint64_t end_reserve = (16384 + lb_size - 1) / lb_size;
+        if (last_block < 1 + end_reserve
+         || ending_lba > last_block - 1 - end_reserve) {
+            fprintf(stderr, "error: Partition %" PRIu32 " ends inside the alternate GPT.\n", partition_num + 1);
+            goto cleanup;
+        }
+
+        // Every check above bounds this partition against the GPT structures
+        // rather than against its neighbours, and the usable range is where
+        // all of them live. UEFI requires that they not overlap. The count is
+        // the table's own: gpt_entry_count caps enumeration, not the disk.
+        uint32_t declared_entries = ENDSWAP(gpt_header.number_of_partition_entries);
+        for (uint32_t i = 0; i < declared_entries; i++) {
+            struct gpt_entry other;
+            uint64_t other_off;
+
+            if (i == partition_num) {
+                continue;
+            }
+
+            other_off = (uint64_t)i * ENDSWAP(gpt_header.size_of_partition_entry);
+            if (add_u64_overflow(gpt_part_entry_base, other_off, &other_off)) {
+                fprintf(stderr, "error: GPT partition entry offset overflows.\n");
+                goto cleanup;
+            }
+            device_read(&other, other_off, sizeof(struct gpt_entry));
+
+            if (other.partition_type_guid[0] == 0
+             && other.partition_type_guid[1] == 0) {
+                continue;
+            }
+
+            if (starting_lba <= ENDSWAP(other.ending_lba)
+             && ENDSWAP(other.starting_lba) <= ending_lba) {
+                fprintf(stderr, "error: Partition %" PRIu32 " overlaps partition %" PRIu32 ".\n",
+                        partition_num + 1, i + 1);
+                goto cleanup;
+            }
         }
 
         uint64_t part_size;
@@ -1716,6 +1833,11 @@ static int enroll_config(int argc, char *argv[]) {
         } else if (strcmp(argv[i], "--reset") == 0) {
             remove_arg(&argc, argv, i--);
             reset = true;
+        } else if (argv[i][0] == '-') {
+            // version() refuses any unrecognised argument; here the positionals
+            // would go with it, so only what cannot be one is refused.
+            enroll_config_usage();
+            return EXIT_FAILURE;
         }
     }
 
@@ -1838,7 +1960,7 @@ cleanup:
     return ret;
 }
 
-#define LIMINE_VERSION "12.6.0"
+#define LIMINE_VERSION "12.8.0"
 #define LIMINE_COPYRIGHT "Copyright (C) 2019-2026 Mintsuki and contributors."
 
 static void version_usage(void) {
@@ -1852,14 +1974,23 @@ static void version_usage(void) {
 }
 
 static int version(int argc, char *argv[]) {
-    if (argc >= 2) {
-        if (strcmp(argv[1], "--help") == 0) {
+    bool version_only = false;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             version_usage();
             return EXIT_SUCCESS;
-        } else if (strcmp(argv[1], "--version-only") == 0) {
-            puts(LIMINE_VERSION);
-            return EXIT_SUCCESS;
+        } else if (strcmp(argv[i], "--version-only") == 0) {
+            version_only = true;
+        } else {
+            version_usage();
+            return EXIT_FAILURE;
         }
+    }
+
+    if (version_only) {
+        puts(LIMINE_VERSION);
+        return EXIT_SUCCESS;
     }
 
     puts("Limine " LIMINE_VERSION);
