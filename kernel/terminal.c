@@ -18,14 +18,27 @@ void kputc(const char c) {
     draw_char(c, cursor_x, cursor_y, 0xFFFFFF);
     cursor_x = cursor_x + 8;
 }
-
+void kputc_color(const char c, uint32_t color) {
+    if (c == '\n') {
+        cursor_x = 0;
+        cursor_y = cursor_y + 30;
+        return;
+    }
+    draw_char(c, cursor_x, cursor_y, color);
+    cursor_x = cursor_x + 8;
+}
 void kprintf(const char *text) {
     while (*text != '\0') {
         kputc(*text);
         text++;
     }
 }
-
+void kprintf_color(const char *text, uint32_t color) {
+    while (*text != '\0') {
+        kputc_color(*text, color);
+        text++;
+    }
+}
 void draw_cursor(void) {
     for (uint64_t i = 0; i < 8; i++) {
         draw_pixel(cursor_x + i, cursor_y + 8, 0xFFFFFF); // Could uses a underline. or whatever
@@ -49,4 +62,12 @@ uint64_t get_cursor_y(void) {
 void set_cursor(uint64_t x, uint64_t y) {
     cursor_x = x;
     cursor_y = y;
+}
+void klog(log_level_t level, const char *message) {
+    char buf[256];
+    int pos = 0;
+    const char *prefix;
+    if (level == LOG_ERROR) {
+        
+    }
 }
