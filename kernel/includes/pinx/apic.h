@@ -24,6 +24,10 @@
 #define X2APIC_ENABLE_BIT   (1 << 10)
 #define IA32_APIC_BASE_MSR  0x1B
 
+/* LVT Timer / LVT Error bits, shared by every LVT register. */
+#define APIC_LVT_MASKED     (1 << 16)
+#define APIC_LVT_PERIODIC   (1 << 17)
+
 #define APIC_TIMER_VECTOR  32
 #define APIC_SPURIOUS_VEC  0xFF
 

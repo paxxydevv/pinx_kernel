@@ -4,7 +4,7 @@
 
 extern volatile struct limine_hhdm_request hhdm_request;
 
-static void kprintf_hex(const char *label, uint64_t value)
+static void kprintf_hex_exception(const char *label, uint64_t value)
 {
     char buf[19];
     buf[0] = '0';
@@ -102,12 +102,12 @@ void exception_page_fault(uint64_t rip, uint64_t error_code)
     __asm__ volatile ("mov %%cr2, %0" : "=r"(cr2));
 
     kprintf("EXCEPTION: Page Fault (14)\n");
-    kprintf_hex("CR2: ", cr2);
-    kprintf_hex("RIP: ", rip);
+    kprintf_hex_exception("CR2: ", cr2);
+    kprintf_hex_exception("RIP: ", rip);
     kprintf("ERR: ");
-    kprintf_hex("", error_code);
+    kprintf_hex_exception("", error_code);
     kprintf("(bit0=P present, bit1=W write, bit2=U user)\n");
-    kprintf_hex("HHDM: ", hhdm_request.response != 0 ? hhdm_request.response->offset : 0);
+    kprintf_hex_exception("HHDM: ", hhdm_request.response != 0 ? hhdm_request.response->offset : 0);
     if (cr2 == 0xFFFF900000000000ULL)
         kprintf("NOTE: CR2 == KHEAP_START (heap base was not mapped)\n");
     for (;;) {

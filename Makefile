@@ -5,6 +5,8 @@ LD  := ld.lld
 
 KERNEL_DIR  := kernel
 INCLUDE_DIR := $(KERNEL_DIR)/includes
+CONFIG_DIR  := include/generated
+CONFIG_H    := $(CONFIG_DIR)/config.h
 
 BUILD_DIR  := build
 ISO_ROOT   := IsoRoot
@@ -56,7 +58,8 @@ ARCH_FLAGS := \
 # --------------------------------------------------
 
 INCLUDE_FLAGS := \
-	-I$(INCLUDE_DIR)
+	-I$(INCLUDE_DIR) \
+	-I$(CONFIG_DIR)
 
 # --------------------------------------------------
 # Common compiler flags
@@ -203,21 +206,35 @@ OBJECTS := \
 # Targets
 # --------------------------------------------------
 
-.PHONY: all kernel iso run db clean
+.PHONY: all kernel iso run db clean distclean help
 
 all: iso
 
 kernel: $(TARGET)
 
+# Build-time configuration. Run ./configure to change it; a fresh checkout has
+# no config.h, so fall back to the Kconfig defaults rather than failing and
+# making the first build a two step affair.
+#
+# This deliberately never overwrites an existing config.h. Otherwise editing
+# Kconfig, or simply running make twice, would silently discard choices made by
+# ./configure. `make distclean` is the way to start over.
+$(CONFIG_H):
+	@echo "  CONF    no $(CONFIG_H), using Kconfig defaults"
+	@./configure
+
 # Generate compile_commands.json for clangd (editor IntelliSense)
-db:
+db: $(CONFIG_H)
 	bear -- make kernel
 
 # --------------------------------------------------
 # C
 # --------------------------------------------------
 
-$(BUILD_DIR)/%.c.o: $(KERNEL_DIR)/%.c
+# $(CONFIG_H) is a normal prerequisite, not order-only, on purpose: changing a
+# option has to force a recompile of everything. If it were order-only, toggling
+# --disable-DEBUG would relink the existing objects and change nothing.
+$(BUILD_DIR)/%.c.o: $(KERNEL_DIR)/%.c $(CONFIG_H)
 	@mkdir -p $(dir $@)
 	@echo "  CC      $<"
 	@$(CC) $(CFLAGS) -c $< -o $@
@@ -226,17 +243,17 @@ $(BUILD_DIR)/%.c.o: $(KERNEL_DIR)/%.c
 # C++
 # --------------------------------------------------
 
-$(BUILD_DIR)/%.cpp.o: $(KERNEL_DIR)/%.cpp
+$(BUILD_DIR)/%.cpp.o: $(KERNEL_DIR)/%.cpp $(CONFIG_H)
 	@mkdir -p $(dir $@)
 	@echo "  CXX     $<"
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 
-$(BUILD_DIR)/%.cc.o: $(KERNEL_DIR)/%.cc
+$(BUILD_DIR)/%.cc.o: $(KERNEL_DIR)/%.cc $(CONFIG_H)
 	@mkdir -p $(dir $@)
 	@echo "  CXX     $<"
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 
-$(BUILD_DIR)/%.cxx.o: $(KERNEL_DIR)/%.cxx
+$(BUILD_DIR)/%.cxx.o: $(KERNEL_DIR)/%.cxx $(CONFIG_H)
 	@mkdir -p $(dir $@)
 	@echo "  CXX     $<"
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -268,7 +285,7 @@ $(BUILD_DIR)/%.asm.o: $(KERNEL_DIR)/%.asm
 # Link kernel
 # --------------------------------------------------
 
-$(TARGET): $(OBJECTS) linker.ld
+$(TARGET): $(OBJECTS) linker.ld $(CONFIG_H)
 	@mkdir -p $(dir $@)
 	@echo "  LD      $@"
 	@$(LD) $(LDFLAGS) -o $@ $(OBJECTS)
@@ -332,6 +349,29 @@ run: iso
 		-drive if=pflash,format=raw,file=$(BUILD_DIR)/OVMF_VARS.fd \
 		-cdrom $(ISO)
 
+# Same as run, but stops on the first CPU exception so gdb can show you where
+# it happened instead of the kernel spinning in its exception handler.
+#
+#   make debug        # in one terminal
+#   gdb -ex 'target remote :1234' build/kernel.elf
+#   (gdb) c
+debug: iso
+	@echo "  DEBUG   Pinx under gdb on :1234"
+
+	@cp $(OVMF_VARS) $(BUILD_DIR)/OVMF_VARS.fd
+	qemu-system-x86_64 \
+		-M q35 \
+		-m 2G \
+		-cpu host \
+		-enable-kvm \
+		-s -S \
+		-no-reboot \
+		-d int,cpu_reset \
+		-dfilter 0x1 \
+		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE) \
+		-drive if=pflash,format=raw,file=$(BUILD_DIR)/OVMF_VARS.fd \
+		-cdrom $(ISO)
+
 # --------------------------------------------------
 # Clean
 # --------------------------------------------------
@@ -340,4 +380,33 @@ clean:
 	rm -rf $(BUILD_DIR)
 	rm -rf $(ISO_ROOT)/boot
 	rm -rf $(ISO_ROOT)/EFI
+
+# Also forgets the build configuration, so the next make starts from the
+# Kconfig defaults. Use this after ./configure if you want to start over.
+distclean: clean
+	rm -rf $(CONFIG_DIR)
+
+# --------------------------------------------------
+# Help
+# --------------------------------------------------
+
+help:
+	@echo "Pinx kernel"
+	@echo ""
+	@echo "  make            build the ISO (default)"
+	@echo "  make kernel     build build/kernel.elf only"
+	@echo "  make run        boot the ISO in QEMU"
+	@echo "  make debug      boot under gdb on :1234, halting on exceptions"
+	@echo "  make db         regenerate compile_commands.json"
+	@echo "  make clean      remove build output"
+	@echo "  make distclean  also discard ./configure's choices"
+	@echo ""
+	@echo "  ./configure     choose build options (see ./configure --help)"
+	@echo ""
+	@echo "Current configuration:"
+	@if [ -f $(CONFIG_H) ]; then \
+		sed -n 's/^#define \(CONFIG_[A-Z_]*\) \([01]\)$$/  \1 = \2/p' $(CONFIG_H); \
+	else \
+		echo "  (none yet, run ./configure or let make pick the defaults)"; \
+	fi
 

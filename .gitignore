@@ -27,3 +27,4 @@ Thumbs.db
 *.o
 *.a
 *.so
+include/generated/

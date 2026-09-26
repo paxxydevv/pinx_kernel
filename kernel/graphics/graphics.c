@@ -9,7 +9,11 @@ void draw_pixel(uint64_t x, uint64_t y, uint32_t color) {
     if (fb == 0) {
         return;
     }
-    if (x > fb->width || y > fb->height)
+    /*
+     * `>=`, not `>`: x == width is one past the last column and would have
+     * overwritten the first pixel of the next scanline.
+     */
+    if (x >= fb->width || y >= fb->height)
         return;
     uint32_t *pixels = fb->address;
     uint64_t pitch = fb->pitch / sizeof(uint32_t);
@@ -44,9 +48,38 @@ void draw_string(const char* string, uint64_t x, uint64_t y, uint32_t color) {
 }
 
 void clear_screen(uint32_t color) {
+    if (fb == 0)
+        return;
     for (uint64_t i = 0; i < fb->width; i++) {
         for (uint64_t b = 0; b < fb->height; b++) {
             draw_pixel(i, b, color); 
         }
     }
+}
+void scroll_framebuffer(uint64_t rows, uint32_t fill_color) {
+    if (fb == 0)
+        return;
+    if (rows >= fb->height)
+        rows = fb->height;
+    uint64_t pitch_pixels = fb->pitch / sizeof(uint32_t);
+    uint32_t *pixels = fb->address;
+    uint64_t copy_pixels = (fb->height - rows) * pitch_pixels;
+    for (uint64_t i = 0; i < copy_pixels; i++) {
+        pixels[i] = pixels[i + rows * pitch_pixels];
+    }
+    for (uint64_t y = fb->height - rows; y < fb->height; y++) {
+        for (uint64_t x = 0; x < pitch_pixels; x++) {
+            pixels[y * pitch_pixels + x] = fill_color;
+        }
+    }
+}
+uint64_t get_framebuffer_width(void) {
+    if (fb == 0)
+        return 0;
+    return fb->width;
+}
+uint64_t get_framebuffer_height(void) {
+    if (fb == 0)
+        return 0;
+    return fb->height;
 }

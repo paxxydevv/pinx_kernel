@@ -1,5 +1,10 @@
 #include "pinx/idt.h"
+#include "pinx/apic.h"
 #include <stdint.h>
+
+/* The 8259 reports an IRQ7 that never asserted on vector 15. */
+#define PIC_SPURIOUS_VECTOR 15
+
 struct idt_entry {
     uint16_t offset_low;
     uint16_t selector;
@@ -52,6 +57,13 @@ extern void irq44(void);
 extern void irq45(void);
 extern void irq46(void);
 extern void irq47(void);
+
+/*
+ * Hardware-generated spurious vectors. These have to be gated or a spurious
+ * interrupt escalates #GP -> double fault -> triple fault -> reboot.
+ */
+extern void spurious_irq15(void);
+extern void spurious_irq255(void);
 
 static void idt_set_gate(
     uint8_t vector,
@@ -109,6 +121,9 @@ void idt_init(void) {
     idt_set_gate(45, (uint64_t)irq45, 0x08, 0x8E);
     idt_set_gate(46, (uint64_t)irq46, 0x08, 0x8E);
     idt_set_gate(47, (uint64_t)irq47, 0x08, 0x8E);
+
+    idt_set_gate(PIC_SPURIOUS_VECTOR, (uint64_t)spurious_irq15, 0x08, 0x8E);
+    idt_set_gate(APIC_SPURIOUS_VEC, (uint64_t)spurious_irq255, 0x08, 0x8E);
 
     __asm__ volatile ("lidt %0" : : "m"(idtr));
 }

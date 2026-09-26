@@ -1,0 +1,41 @@
+# Pinx kernel build configuration
+#
+# This file is the single source of truth for compile-time options. Run
+# ./configure to pick values, or pass flags directly:
+#
+#   ./configure
+#   ./configure --disable-DEBUG
+#   ./configure --enable-DEBUG --disable-DEBUG_PCI
+#
+# ./configure writes include/generated/config.h, which the Makefile picks up
+# automatically. Nothing else should hardcode these values.
+
+mainmenu "Pinx kernel configuration"
+
+config DEBUG
+	bool "Print kernel debug messages"
+	default y
+	help
+	  Status and diagnostic messages such as "GDT: OK" or "PMM INIT: OK".
+
+	  Turning this off compiles the messages out entirely: the strings are
+	  not in the binary and the calls cost nothing at runtime. Error paths
+	  and panic() are never compiled out and are unaffected by this.
+
+config DEBUG_PCI
+	bool "Print every device found during PCI enumeration"
+	default y
+	depends on DEBUG
+	help
+	  Without this, pci_enumerate() stays silent unless something asks it
+	  to report. Useful once a driver owns a device and you do not want
+	  boot spam.
+
+config DEBUG_HEAP
+	bool "Print kernel heap allocation failures"
+	default y
+	depends on DEBUG
+	help
+	  kmalloc() already returns NULL on failure and the callers decide
+	  what to do about it. This only controls whether a short allocation
+	  is reported on screen before it is handled.

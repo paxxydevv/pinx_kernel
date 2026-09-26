@@ -4,12 +4,16 @@
 #include "pinx/keyboard.h"
 #include <stdint.h>
 
-struct interrupt_frame {
-    uint64_t r15, r14, r13, r12, r11, r10, r9, r8;
-    uint64_t rbp, rdi, rsi, rdx, rcx, rbx, rax;
-    uint64_t vector;
-    uint64_t error_code;
-};
+void irq_spurious_handler(struct interrupt_frame *frame) {
+    /*
+     * Nothing to acknowledge and nothing to service. The EOI is still sent
+     * because vector 15 comes from the 8259, which does need one, and a
+     * superfluous EOI on the APIC is a no-op on an interrupt that never
+     * reached the in-service register.
+     */
+    (void)frame;
+    apic_send_eoi();
+}
 
 void irq_common_handler(struct interrupt_frame *frame) {
     uint64_t vector = frame->vector;

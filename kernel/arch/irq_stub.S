@@ -68,3 +68,18 @@ irq_stub irq44, 44
 irq_stub irq45, 45
 irq_stub irq46, 46
 irq_stub irq47, 47
+
+/*
+ * Vectors the hardware can deliver on its own, with no matching device:
+ *
+ *   15  - the 8259's spurious IRQ7 interrupt
+ *   255 - the local APIC's spurious interrupt (SPIVR), and the second
+ *         spurious vector of a cascaded PIC pair
+ *
+ * These used to have no IDT gate at all. The APIC raises 255 on its own during
+ * early init, an unhandled vector faults as #GP, the handler faults as a
+ * double fault, and the machine triple faults into a reboot with nothing on
+ * screen to explain it.
+ */
+irq_stub spurious_irq15, 15
+irq_stub spurious_irq255, 255
