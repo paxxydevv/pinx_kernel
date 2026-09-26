@@ -7,6 +7,7 @@ KERNEL_DIR  := kernel
 INCLUDE_DIR := $(KERNEL_DIR)/includes
 CONFIG_DIR  := include/generated
 CONFIG_H    := $(CONFIG_DIR)/config.h
+CONFIG_MK   := $(CONFIG_DIR)/config.mk
 
 BUILD_DIR  := build
 ISO_ROOT   := IsoRoot
@@ -37,6 +38,34 @@ OVMF_VARS := $(firstword \
 )
 
 TARGET := $(BUILD_DIR)/kernel.elf
+
+# --------------------------------------------------
+# Build profile
+# --------------------------------------------------
+#
+# Read the values ./configure settled on. config.h is useless here: GNU make
+# treats every '#define' line as a comment, so the Makefile cannot see any
+# value in it. That is why ./configure also writes config.mk.
+#
+# -include, not include, so a fresh clone still configures itself on first
+# build instead of erroring out on a missing file.
+-include $(CONFIG_MK)
+
+ifeq ($(CONFIG_PROFILE),release)
+# Release: optimise, and ship no debug info at all. -fno-omit-frame-pointer is
+# already in COMMON_FLAGS and stays on even here, because a frame pointer is
+# what makes any crash report readable at all.
+PROFILE_FLAGS := -O2
+DEBUG_INFO    :=
+else
+# Debug: no optimisation, so the debugger shows the code you wrote rather than
+# something the optimiser rearranged, and full DWARF for gdb.
+PROFILE_FLAGS := -O0
+DEBUG_INFO    := -g3 -gdwarf-4
+endif
+
+# Shown by `make help`, so a wrong-looking build is easy to explain.
+PROFILE_NAME := $(if $(CONFIG_PROFILE),$(CONFIG_PROFILE),debug)
 
 # --------------------------------------------------
 # Architecture
@@ -83,16 +112,13 @@ COMMON_FLAGS := \
 	-Wnull-dereference \
 	-Wdouble-promotion \
 	-Wformat=2 \
-	-Werror=return-type \
-	-O2
-
-# --------------------------------------------------
-# C flags
-# --------------------------------------------------
+	-Werror=return-type
 
 CFLAGS := \
 	$(ARCH_FLAGS) \
 	$(COMMON_FLAGS) \
+	$(PROFILE_FLAGS) \
+	$(DEBUG_INFO) \
 	$(INCLUDE_FLAGS) \
 	-std=c2x
 
@@ -103,6 +129,8 @@ CFLAGS := \
 CXXFLAGS := \
 	$(ARCH_FLAGS) \
 	$(COMMON_FLAGS) \
+	$(PROFILE_FLAGS) \
+	$(DEBUG_INFO) \
 	$(INCLUDE_FLAGS) \
 	-std=c++2x \
 	-fno-exceptions \
@@ -206,7 +234,7 @@ OBJECTS := \
 # Targets
 # --------------------------------------------------
 
-.PHONY: all kernel iso run db clean distclean help
+.PHONY: all kernel iso run db clean distclean help release relwithdebug
 
 all: iso
 
@@ -224,8 +252,20 @@ $(CONFIG_H):
 	@./configure
 
 # Generate compile_commands.json for clangd (editor IntelliSense)
+# bear only records compilations that actually run. If everything is already
+# built, "make kernel" is a no-op and bear leaves behind an EMPTY
+# compile_commands.json, which sends clangd off with a default command line
+# that has none of the kernel's include paths -- so every file reports bogus
+# errors. -B forces the rebuild that gives bear something to record, and the
+# check below makes a failure loud instead of silently poisoning the editor.
 db: $(CONFIG_H)
-	bear -- make kernel
+	@rm -f compile_commands.json
+	bear -- make -B kernel
+	@grep -q '"file"' compile_commands.json 2>/dev/null || { \
+		echo "make db: compile_commands.json is empty -- clangd will not work" >&2; \
+		exit 1; \
+	}
+	@echo "compile_commands.json: $$(grep -c '"file"' compile_commands.json) entries"
 
 # --------------------------------------------------
 # C
@@ -387,6 +427,23 @@ distclean: clean
 	rm -rf $(CONFIG_DIR)
 
 # --------------------------------------------------
+# Profile shortcuts
+# --------------------------------------------------
+#
+# Convenience wrappers that reconfigure and rebuild in one step. They change
+# ./configure's saved choices, so a plain `make` afterwards keeps them.
+
+release:
+	@./configure --profile=release
+	@$(MAKE) --no-print-directory all
+
+# -O2 with debug messages kept, for when a release build still misbehaves and
+# stepping through -O0 code is not what you need.
+relwithdebug:
+	@./configure --profile=release --enable-DEBUG
+	@$(MAKE) --no-print-directory all
+
+# --------------------------------------------------
 # Help
 # --------------------------------------------------
 
@@ -397,15 +454,17 @@ help:
 	@echo "  make kernel     build build/kernel.elf only"
 	@echo "  make run        boot the ISO in QEMU"
 	@echo "  make debug      boot under gdb on :1234, halting on exceptions"
+	@echo "  make release    reconfigure for release, then build"
 	@echo "  make db         regenerate compile_commands.json"
 	@echo "  make clean      remove build output"
 	@echo "  make distclean  also discard ./configure's choices"
 	@echo ""
 	@echo "  ./configure     choose build options (see ./configure --help)"
 	@echo ""
-	@echo "Current configuration:"
+	@echo "Current configuration (profile: $(PROFILE_NAME)):"
 	@if [ -f $(CONFIG_H) ]; then \
-		sed -n 's/^#define \(CONFIG_[A-Z_]*\) \([01]\)$$/  \1 = \2/p' $(CONFIG_H); \
+		sed -n -e 's/^#define \(CONFIG_[A-Z_]*\) \([01]\)$$/  \1 = \2/p' \
+		       -e 's/^#define \(CONFIG_[A-Z_]*\) "\(.*\)"$$/  \1 = \2/p' $(CONFIG_H); \
 	else \
 		echo "  (none yet, run ./configure or let make pick the defaults)"; \
 	fi

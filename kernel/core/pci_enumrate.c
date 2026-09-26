@@ -2,7 +2,6 @@
 #include "pinx/io.h"
 #include "pinx/pci_enumrate.h"
 #include "pinx/kdebug.h"
-#include "pinx/terminal.h"
 uint32_t pci_config_read32(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset) {
     uint32_t address =
     (1U << 31) |

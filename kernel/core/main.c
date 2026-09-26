@@ -59,6 +59,9 @@ void kmain(void)
     }
     struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
     graphics_init(framebuffer);
+    /* First statement after the console exists, so every later line obeys the
+     * configured threshold and shows its tag. */
+    klog_init();
     KINFO("GRAPHICS_SUB: OK\n");
     gdt_init();
     KINFO("GDT: OK\n");

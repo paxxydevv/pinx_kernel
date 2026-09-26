@@ -21,6 +21,7 @@ srcdir=$(dirname "$0")
 KCONFIG="$srcdir/Kconfig"
 OUTDIR="$srcdir/include/generated"
 OUTFILE="$OUTDIR/config.h"
+OUTMK="$OUTDIR/config.mk"
 CACHE="$OUTDIR/config.cache"
 
 die() {
@@ -32,12 +33,15 @@ die() {
 
 # ---------------------------------------------------------------- parse Kconfig
 #
-# Emits one "NAME|PROMPT|DEFAULT" line per option. The Kconfig grammar we
-# support is a small subset on purpose:
+# Emits one "NAME|TYPE|PROMPT|DEFAULT|VALUES|DEPS|ALIASES" line per option. The
+# Kconfig grammar we support is a small subset on purpose:
 #
 #   config NAME
-#       bool "prompt text"
-#       default y|n
+#       bool   "prompt text"      yes/no
+#       string "prompt text"      has a word value
+#       default y|n|<word>
+#       values  a b c             allowed words, string options only
+#       option  a b               extra CLI spellings for --name=value
 #       depends on OTHER
 #
 # Anything else is ignored, so the help text can say whatever it likes.
@@ -46,27 +50,55 @@ parse_kconfig() {
     awk '
         function flush() {
             if (name != "") {
-                printf "%s|%s|%s|%s\n", name, prompt, def, deps
-                name = ""; prompt = ""; def = "n"; deps = ""
+                printf "%s|%s|%s|%s|%s|%s|%s\n", name, type, prompt, def, vals, deps, alias
+                name = ""; type = "bool"; prompt = ""; def = "n"
+                vals = "-"; deps = ""; alias = "-"
             }
         }
         /^[[:space:]]*#/ { next }
         /^config[[:space:]]+/ {
             flush()
             name = $2
+            type = "bool"
             prompt = name
             def = "n"
+            vals = "-"
             deps = ""
+            alias = "-"
             next
         }
         /^[[:space:]]*bool[[:space:]]/ {
+            type = "bool"
+            if (match($0, /"[^"]*"/)) {
+                prompt = substr($0, RSTART + 1, RLENGTH - 2)
+            }
+            next
+        }
+        /^[[:space:]]*string[[:space:]]/ {
+            type = "string"
             if (match($0, /"[^"]*"/)) {
                 prompt = substr($0, RSTART + 1, RLENGTH - 2)
             }
             next
         }
         /^[[:space:]]*default[[:space:]]+/ {
-            def = ($2 == "y") ? "y" : "n"
+            # A bool default is y or n; a string default is any word. The
+            # option type decides how this is validated later.
+            def = $2
+            next
+        }
+        /^[[:space:]]*values[[:space:]]+/ {
+            line = $0
+            sub(/^[[:space:]]*values[[:space:]]+/, "", line)
+            gsub(/[[:space:]]+/, " ", line)
+            vals = line
+            next
+        }
+        /^[[:space:]]*option[[:space:]]+/ {
+            line = $0
+            sub(/^[[:space:]]*option[[:space:]]+/, "", line)
+            gsub(/[[:space:]]+/, " ", line)
+            alias = line
             next
         }
         /^[[:space:]]*depends[[:space:]]+on[[:space:]]+/ {
@@ -94,12 +126,23 @@ printf '%s\n' "$OPTIONS" > "$OPTFILE"
 load_cache() {
     CACHE_VALUES=""
     if [ -f "$CACHE" ]; then
-        CACHE_VALUES=$(grep -E '^[A-Za-z_][A-Za-z0-9_]*=[yn]$' "$CACHE" || true)
+        # Values are y/n for bools and a bare word for strings, so match any
+        # single token rather than just y|n.
+        CACHE_VALUES=$(grep -E '^[A-Za-z_][A-Za-z0-9_]*=[A-Za-z0-9_-]+$' "$CACHE" || true)
     fi
 }
 
 cached_value() {
     echo "$CACHE_VALUES" | grep "^$1=" | tail -n 1 | cut -d= -f2 || true
+}
+
+# Is $2 one of the space separated words in $1? ("-" means "no constraint")
+value_allowed() {
+    [ "$1" = "-" ] && return 0
+    for allowed in $1; do
+        [ "$allowed" = "$2" ] && return 0
+    done
+    return 1
 }
 
 save_cache() {
@@ -115,7 +158,17 @@ save_cache() {
 
 MODE=default
 EXPLICIT=""
+EXPLICIT_VALUES=""
 want_help=0
+
+# Validate a string option value early, so a typo fails at argument time rather
+# than quietly producing a config.h that no longer matches the Makefile.
+check_string_value() {
+    # $1 = option name, $2 = value, $3 = allowed words
+    if [ "$3" != "-" ] && ! value_allowed "$3" "$2"; then
+        die "$1: '$2' is not one of: $3"
+    fi
+}
 
 for arg in "$@"; do
     case "$arg" in
@@ -130,6 +183,41 @@ for arg in "$@"; do
             MODE=explicit
             EXPLICIT="$EXPLICIT -${arg#--disable-}"
             ;;
+        # --name=value sets a string option. The name is matched
+        # case-insensitively, and may be either the symbol name or one of the
+        # aliases declared with `option` in Kconfig, so both --profile and
+        # --log-level work.
+        --*=*)
+            MODE=explicit
+            sname=$(printf '%s' "${arg%%=*}" | tr 'a-z' 'A-Z')
+            sname=${sname#--}
+            svalue=${arg#*=}
+            # An alias wins over a same-named symbol, so resolve aliases first.
+            resolved=$(awk -F'|' -v want="$sname" '
+                { n = toupper($1); a = $7
+                  if (a != "-") {
+                    m = split(a, words, " ")
+                    for (i = 1; i <= m; i++)
+                      if (toupper(words[i]) == want) { print $1; found = 1; exit }
+                  }
+                }
+                END { if (!found) exit 1 }
+            ' "$OPTFILE" 2>/dev/null || true)
+            if [ -n "$resolved" ]; then
+                sname=$resolved
+            fi
+            sline=$(awk -F'|' -v n="$sname" '$1 == n { print; exit }' "$OPTFILE")
+            if [ -z "$sline" ]; then
+                die "unknown option: --$sname (try --help)"
+            fi
+            stype=$(printf '%s' "$sline" | cut -d'|' -f2)
+            if [ "$stype" != string ]; then
+                die "--$sname takes no value; use --enable-$sname / --disable-$sname"
+            fi
+            svals=$(printf '%s' "$sline" | cut -d'|' -f5)
+            check_string_value "$sname" "$svalue" "$svals"
+            EXPLICIT_VALUES="$EXPLICIT_VALUES $sname=$svalue"
+            ;;
         --*)
             die "unknown option: $arg (try --help)"
             ;;
@@ -143,8 +231,9 @@ if [ "$want_help" -eq 1 ]; then
     cat <<'EOF'
 Usage: ./configure [options]
 
-  --enable-OPTION     set OPTION to y
-  --disable-OPTION    set OPTION to n
+  --enable-OPTION     set a yes/no OPTION to y
+  --disable-OPTION    set a yes/no OPTION to n
+  --name=value        set a string OPTION (matched case-insensitively)
   --help              show this text
 
 With no options, every value is taken from the previous run, or from the
@@ -153,8 +242,20 @@ prompted for each option instead.
 
 Options declared in ./Kconfig:
 EOF
-    echo "$OPTIONS" | while IFS='|' read -r name prompt def deps; do
-        printf '  %-22s %s [%s]\n' "$name" "$prompt" "$def"
+    echo "$OPTIONS" | while IFS='|' read -r name type prompt def vals deps alias; do
+        case "$type" in
+            string)
+                # Show the alias when there is one, since that is the nicer
+                # spelling: --log-level rather than --default_log_level.
+                shown=$(printf '%s' "$name" | tr 'A-Z' 'a-z')
+                case "$alias" in
+                    -|"") ;;
+                    *) shown=$(printf '%s' "$alias" | cut -d" " -f1) ;;
+                esac
+                printf '  --%-20s %s (%s) [%s]\n' "$shown" "$prompt" "$vals" "$def"
+                ;;
+            *)      printf '  %-22s %s [%s]\n' "$name" "$prompt" "$def" ;;
+        esac
     done
     exit 0
 fi
@@ -179,13 +280,16 @@ load_cache
 # because a `while read` leaves it at EOF.
 NAMES=""
 exec 3< "$OPTFILE"
-while IFS='|' read -r name prompt def deps <&3; do
-    eval "$name=n"
+while IFS='|' read -r name type prompt def vals deps alias <&3; do
+    case "$type" in
+        string) eval "$name=$def" ;;
+        *)      eval "$name=n" ;;
+    esac
     NAMES="$NAMES $name"
 done
 
 exec 3< "$OPTFILE"
-while IFS='|' read -r name prompt def deps <&3; do
+while IFS='|' read -r name type prompt def vals deps alias <&3; do
     # Precedence: explicit command line > previous run > Kconfig default.
     value=""
     case " $EXPLICIT " in
@@ -198,10 +302,31 @@ while IFS='|' read -r name prompt def deps <&3; do
     if [ -z "$value" ]; then
         value=$def
     fi
+    # A string option set with --name=value must beat the cached value, the
+    # same way --enable-OPTION beats it for a bool. Checked after the cache
+    # above purely because the cache is only consulted when nothing is set.
+    if [ "$type" = string ]; then
+        for pair in $EXPLICIT_VALUES; do
+            case "$pair" in
+                "$name="*) value=${pair#*=} ;;
+            esac
+        done
+    fi
+    case "$type" in
+        bool)
+            case "$value" in y|n) ;; *) value=n ;; esac ;;
+        string)
+            # A value from the cache or Kconfig could be anything; clamp it to
+            # the declared set rather than emitting a config the Makefile
+            # cannot interpret.
+            value_allowed "$vals" "$value" || value=$def
+            ;;
+    esac
 
-    # Honour `depends on`: a disabled parent forces its children off.
+    # Honour `depends on`: a disabled parent forces its children off. Only
+    # meaningful for bools; a string parent is a value, not a yes/no.
     forced=""
-    if [ -n "$deps" ]; then
+    if [ -n "$deps" ] && [ "$type" != string ]; then
         eval "parent_value=\$$deps"
         if [ "$parent_value" != y ]; then
             value=n
@@ -214,6 +339,24 @@ while IFS='|' read -r name prompt def deps <&3; do
             # Kconfig hides options whose parent is off, so do not ask. Asking
             # would be a trap: the answer could not be honoured.
             printf '%s [n] (forced off, requires %s)\n' "$prompt" "$forced" >&2
+        elif [ "$type" = string ]; then
+            while :; do
+                printf '%s (%s) [%s] ' "$prompt" "$vals" "$value" >&2
+                if read -r answer; then
+                    case "$answer" in
+                        "") break ;;
+                        *)
+                            if value_allowed "$vals" "$answer"; then
+                                value=$answer
+                                break
+                            fi
+                            echo "configure: please answer one of: $vals" >&2
+                            ;;
+                    esac
+                else
+                    break
+                fi
+            done
         else
             while :; do
                 printf '%s [%s] (y/n) ' "$prompt" "$value" >&2
@@ -236,7 +379,7 @@ while IFS='|' read -r name prompt def deps <&3; do
     # Re-assert `depends on` after prompting. Without this, answering y to a
     # child of a disabled parent would emit CONFIG_FOO 1 alongside
     # CONFIG_PARENT 0, and the child's #if would win in the header.
-    if [ -n "$deps" ]; then
+    if [ -n "$deps" ] && [ "$type" != string ]; then
         eval "parent_value=\$$deps"
         if [ "$parent_value" != y ]; then
             value=n
@@ -246,7 +389,15 @@ while IFS='|' read -r name prompt def deps <&3; do
     eval "$name=\$value"
 done
 
-# ---------------------------------------------------------------- emit config.h
+# ------------------------------------------------- emit config.h and config.mk
+#
+# Two files, because the two consumers disagree on syntax:
+#
+#   config.h  for the C code. Strings become "value", bools become 1 or 0.
+#   config.mk  for the Makefile. GNU make ignores '#define' lines entirely --
+#             they are comments to it -- so a Makefile that wants to branch on
+#             CONFIG_PROFILE cannot read config.h and needs a real
+#             'NAME := value' assignment.
 
 mkdir -p "$OUTDIR"
 
@@ -256,9 +407,11 @@ exec 3< "$OPTFILE"
     echo " * run ./configure instead. */"
     echo "#pragma once"
     echo ""
-    while IFS='|' read -r name prompt def deps <&3; do
+    while IFS='|' read -r name type prompt def vals deps alias <&3; do
         eval "value=\$$name"
-        if [ "$value" = y ]; then
+        if [ "$type" = string ]; then
+            echo "#define CONFIG_$name \"$value\""
+        elif [ "$value" = y ]; then
             echo "#define CONFIG_$name 1"
         else
             echo "#define CONFIG_$name 0"
@@ -267,13 +420,30 @@ exec 3< "$OPTFILE"
     done
 } > "$OUTFILE.new"
 
+exec 3< "$OPTFILE"
+{
+    echo "# Generated by ./configure from Kconfig. Do not edit by hand."
+    echo "# Read by the Makefile with '-include'."
+    while IFS='|' read -r name type prompt def vals deps alias <&3; do
+        eval "value=\$$name"
+        if [ "$type" = string ]; then
+            echo "CONFIG_$name := $value"
+        elif [ "$value" = y ]; then
+            echo "CONFIG_$name := 1"
+        else
+            echo "CONFIG_$name := 0"
+        fi
+    done
+} > "$OUTMK.new"
+
 mv "$OUTFILE.new" "$OUTFILE"
-chmod 644 "$OUTFILE"
+mv "$OUTMK.new" "$OUTMK"
+chmod 644 "$OUTFILE" "$OUTMK"
 save_cache
 
 echo "configure: wrote $OUTFILE"
 exec 3< "$OPTFILE"
-while IFS='|' read -r name prompt def deps <&3; do
+while IFS='|' read -r name type prompt def vals deps alias <&3; do
     eval "value=\$$name"
     printf '  CONFIG_%-20s = %s\n' "$name" "$value"
 done

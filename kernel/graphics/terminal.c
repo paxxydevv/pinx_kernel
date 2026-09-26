@@ -1,6 +1,8 @@
 #include "../includes/pinx/terminal.h"
 #include "../includes/pinx/graphics/graphics.h"
+#include "../includes/pinx/kdebug.h"
 #include <stdarg.h>
+#include <stddef.h>
 static uint64_t cursor_x = 0;
 static uint64_t cursor_y = 0;
 
@@ -231,6 +233,28 @@ void kvprintf(const char *fmt, va_list args) {
 }
 
 void kprintf_fmt(const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    kvprintf(fmt, args);
+    va_end(args);
+}
+
+/*
+ * Emitting a line lives here, next to the cursor and kvprintf. The threshold
+ * logic that decides *whether* to call this lives in core/klog.c, which needs
+ * no graphics and is therefore testable on a host.
+ */
+void klog_emit(klog_level_t level, const char *fmt, ...) {
+#if CONFIG_LOG_TAGS
+    /*
+     * Two calls rather than one combined kprintf_fmt, so the tag cannot be
+     * mangled by a stray conversion specifier at the start of the message.
+     */
+    kprintf_fmt("[%s] ", klog_level_name(level));
+#endif
+
+    /* Straight to kvprintf: the only work kprintf_fmt would add is a second
+     * va_start, and this path is the hot one. */
     va_list args;
     va_start(args, fmt);
     kvprintf(fmt, args);

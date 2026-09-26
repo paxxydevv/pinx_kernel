@@ -89,36 +89,86 @@ make run
 `make` works on a fresh clone with no configuration step: if `config.h` has not
 been generated yet, the defaults in `Kconfig` are used.
 
+`include/generated/config.h` is generated and not committed, so on a fresh clone
+it does not exist until `./configure` or `make` runs once. Until then
+`kdebug.h` falls back to the committed defaults in
+`kernel/includes/pinx/kconfig_defaults.h`, which keeps the tree compiling and
+keeps editors and clangd from reporting a missing `config.h`. The generated
+header always takes precedence the moment it exists.
+
+`compile_commands.json` is also generated (`make db`) and not committed, so
+point your editor's clangd at it after a fresh clone.
+
 ### Build options
 
-Optional debug output is controlled by `./configure`. It reads the options from
-`Kconfig` and writes `include/generated/config.h`, which is the single source of
-truth at compile time.
+Build behaviour and debug output are controlled by `./configure`. It reads the
+options from `Kconfig` and writes two files: `include/generated/config.h` for
+the compiler and `include/generated/config.mk` for the Makefile. Both are
+generated; the Makefile needs the second one because `make` treats every
+`#define` in the first as a comment.
 
 ```bash
 ./configure                        # keep current choices, or pick defaults
 ./configure --help                 # list every option
 ./configure --disable-DEBUG        # drop all optional output
 ./configure --enable-DEBUG_HEAP    # heap tracing only
+./configure --profile=release      # optimised build, no debug info
+./configure --log-level=debug      # lower the runtime threshold
 ```
 
 Choices persist in `config.cache`, so later invocations only change what you
 name. The current state is always visible with `make help`.
 
-| Option            | Default | Effect                                       |
-| ----------------- | ------- | -------------------------------------------- |
-| `DEBUG`           | `y`     | Status/init messages via `KINFO`             |
-| `DEBUG_PCI`       | `y`     | PCI enumeration output via `KPCI`            |
-| `DEBUG_HEAP`      | `y`     | Heap growth output via `KHEAP`               |
+| Option               | Default | Effect                                          |
+| -------------------- | ------- | ----------------------------------------------- |
+| `PROFILE`            | `debug` | `debug` is `-O0 -g3`; `release` is `-O2`, no debug info |
+| `DEBUG`              | `y`     | Status/init messages via `KINFO`                |
+| `DEBUG_PCI`          | `y`     | PCI enumeration output via `KPCI`               |
+| `DEBUG_HEAP`         | `y`     | Heap growth output via `KHEAP`                  |
+| `LOG_TAGS`           | `y`     | Prefix each line with `[info]`, `[warn]`, ...   |
+| `DEFAULT_LOG_LEVEL`  | `info`  | Runtime threshold at boot                       |
 
-`DEBUG_PCI` and `DEBUG_HEAP` depend on `DEBUG`; disabling `DEBUG` forces them
-off, and re-enabling `DEBUG` will not silently turn them back on.
+`make release` reconfigures for `release` and builds in one step;
+`make relwithdebug` keeps the output but stays at `-O2`.
 
-Turning these off removes the strings and code from the binary, but **errors and
-panics are never compiled out**. `KERROR(...)` and `panic(...)` are unconditional
-in every configuration, because a kernel that fails silently is worse than a
-noisy one. Use `KINFO` for progress output you would rather not see in a release
-build.
+### Log levels
+
+There are two independent filters, and the difference matters when sizing a
+build:
+
+**Compile time.** A disabled option expands its macro to `((void)0)`, so the
+call, the format string and the argument expressions all disappear. This is the
+only thing that actually shrinks the binary:
+
+```bash
+./configure --disable-DEBUG --disable-DEBUG_PCI --disable-DEBUG_HEAP
+```
+
+**Run time.** Every enabled level is compared against a threshold held in
+`klog_threshold`, which can be changed at any point with
+`klog_set_level()`. Raising it costs one predictable branch and needs no
+rebuild, but the strings stay in the binary:
+
+| Level   | Emits                                     |
+| ------- | ----------------------------------------- |
+| `trace` | `KTRACE`                                  |
+| `debug` | `KDEBUG`                                  |
+| `info`  | `KINFO`, `KPCI`                           |
+| `warn`  | `KHEAP`                                   |
+| `error` | `KERROR`                                  |
+
+Level names are `trace`, `debug`, `info`, `warn`, `error` and `none`, ordered
+so a threshold is a single comparison. `none` silences everything, errors
+included, and has to be asked for deliberately.
+
+`DEBUG_PCI`, `DEBUG_HEAP` and `LOG_TAGS` depend on `DEBUG`; disabling `DEBUG`
+forces them off, and re-enabling `DEBUG` will not silently turn them back on.
+
+Turning the compile-time options off removes the strings and code, but **errors
+and panics are never compiled out**. `KERROR(...)` and `panic(...)` are
+unconditional in every configuration, because a kernel that fails silently is
+worse than a noisy one. Use `KINFO` for progress output you would rather not see
+in a release build.
 
 ## Source Structure
 
