@@ -1,8 +1,4 @@
-//
-// Created by gentoo-zapp on 9/26/26.
-//
+#pragma once
+#include "stdint.h"
 
-#ifndef PINX_KERNEL_AHCI_H
-#define PINX_KERNEL_AHCI_H
-
-#endif //PINX_KERNEL_AHCI_H
+void init_ahci(uintptr_t hba, uint8_t port);

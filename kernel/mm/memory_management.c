@@ -18,7 +18,6 @@ static uint64_t bitmap_entries;
 static uint64_t alloc_hint;
 
 #define PAGE_SIZE 4096
-#define PMM_NO_PAGE UINT64_MAX
 #define KHEAP_START 0xFFFF900000000000ULL
 #define KHEAP_END   0xFFFFA00000000000ULL
 
@@ -35,6 +34,12 @@ static uint64_t alloc_hint;
 #define PTE_GLOBAL    (1ULL << 8)
 #define PTE_NX        (1ULL << 63)
 #define PTE_ADDR_MASK 0x000FFFFFFFFFF000ULL
+/* Same idea, but stopping at the top of the frame a huge leaf encodes: a 1GiB
+ * page only populates bits 12..29 and a 2MiB page only 12..20. Using
+ * PTE_ADDR_MASK on those entries would fold the reserved high bits into the
+ * result. */
+#define PTE_ADDR_MASK_1G 0x000FFFFFFFC00000ULL
+#define PTE_ADDR_MASK_2M 0x000FFFFFFFE00000ULL
 
 static uint64_t *pml4;
 
@@ -375,6 +380,66 @@ void vmm_unmap_page(uint64_t virtual) {
 
     // Forget the old virtual -> physical translation in the TLB.
     tlb_flush(virtual);
+}
+
+/*
+ * Resolve the physical address of `virtual` by walking the four-level tables.
+ *
+ * Takes any address rather than a page-aligned one: the offset inside the page
+ * is added back at the end, so this can be pointed straight at a struct
+ * instead of at its first byte.
+ *
+ * Huge leaves are resolved arithmetically instead of being followed as
+ * pointers. vmm_map_page_flags refuses to create them, but the tables handed
+ * over by Limine are not ours and may well contain 1GiB or 2MiB pages.
+ *
+ * Returns VMM_NO_PHYS if any level along the walk is not present. It never
+ * panics, including when vmm_init has not run: this is meant to be callable
+ * from a fault handler, where finding out what is mapped is the whole point.
+ */
+uint64_t vmm_virt_to_phys(uint64_t virtual) {
+    if (pml4 == nullptr) {
+        return VMM_NO_PHYS;
+    }
+
+    uint64_t offset = virtual & (PAGE_SIZE - 1);
+    uint64_t addr = virtual & ~0xFFFULL;
+
+    uint64_t entry = pml4[(addr >> 39) & 0x1FF];
+    if (!(entry & PTE_PRESENT)) {
+        return VMM_NO_PHYS;
+    }
+    if (entry & PTE_HUGE) {
+        /* A 512GiB leaf. Four-level paging reserves this bit, so a set one is
+         * a fault and there is no correct frame to compute from it. */
+        return VMM_NO_PHYS;
+    }
+
+    uint64_t *pdpt = (uint64_t *)((entry & PTE_ADDR_MASK) + hhdm_base());
+    entry = pdpt[(addr >> 30) & 0x1FF];
+    if (!(entry & PTE_PRESENT)) {
+        return VMM_NO_PHYS;
+    }
+    if (entry & PTE_HUGE) {
+        return (entry & PTE_ADDR_MASK_1G) | (addr & 0x3FFFFFFF) | offset;
+    }
+
+    uint64_t *pd = (uint64_t *)((entry & PTE_ADDR_MASK) + hhdm_base());
+    entry = pd[(addr >> 21) & 0x1FF];
+    if (!(entry & PTE_PRESENT)) {
+        return VMM_NO_PHYS;
+    }
+    if (entry & PTE_HUGE) {
+        return (entry & PTE_ADDR_MASK_2M) | (addr & 0x1FFFFF) | offset;
+    }
+
+    uint64_t *pt = (uint64_t *)((entry & PTE_ADDR_MASK) + hhdm_base());
+    entry = pt[(addr >> 12) & 0x1FF];
+    if (!(entry & PTE_PRESENT)) {
+        return VMM_NO_PHYS;
+    }
+
+    return (entry & PTE_ADDR_MASK) | offset;
 }
 
 void kheap_init(void) {

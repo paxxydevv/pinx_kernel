@@ -32,16 +32,6 @@ extern void context_switch(uint64_t *current_rsp, uint64_t new_rsp);
 
 static void task_end(void) {
     current_task->state = TASK_DEAD;
-
-    /*
-     * The old version halted here forever, which meant a task returning from
-     * its entry point took the whole machine down with it. Hand control back
-     * to the kernel task instead; its stack is never popped past the switch
-     * point, so this never returns.
-     *
-     * Note the task's stack is not reclaimed. TASK_DEAD slots are never
-     * recycled, so the leak is bounded by MAX_TASKS for now.
-     */
     scheduler_yield();
     panic("task_end: scheduler_yield returned");
 }

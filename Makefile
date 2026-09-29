@@ -9,9 +9,16 @@ CONFIG_DIR  := include/generated
 CONFIG_H    := $(CONFIG_DIR)/config.h
 CONFIG_MK   := $(CONFIG_DIR)/config.mk
 
+# The pair, used wherever a build step has to wait for the configuration to
+# exist and to be current. Never depend on CONFIG_H alone: the Makefile reads
+# config.mk and the compiler reads config.h, and ./configure writes both
+# together, so a step that waits for one of them can still see a stale other.
+CONFIG_FILES := $(CONFIG_H) $(CONFIG_MK)
+
 BUILD_DIR  := build
 ISO_ROOT   := IsoRoot
 ISO        := $(BUILD_DIR)/pinx.iso
+SATA_IMG   := $(BUILD_DIR)/sata0.img
 
 LIMINE_DIR := limine-binary
 LIMINE     := $(LIMINE_DIR)/limine
@@ -40,7 +47,7 @@ OVMF_VARS := $(firstword \
 TARGET := $(BUILD_DIR)/kernel.elf
 
 # --------------------------------------------------
-# Build profile
+# Which goals need a configuration
 # --------------------------------------------------
 #
 # Read the values ./configure settled on. config.h is useless here: GNU make
@@ -49,7 +56,36 @@ TARGET := $(BUILD_DIR)/kernel.elf
 #
 # -include, not include, so a fresh clone still configures itself on first
 # build instead of erroring out on a missing file.
--include $(CONFIG_MK)
+#
+# The catch is that -include is not just "read it if it is there". Given the
+# name of a makefile, make also treats it as a goal to remake, and if the rule
+# for that goal can run, it runs it -- before make has decided which target the
+# user asked for. So on a fresh clone every invocation would run ./configure,
+# including `make clean` and `make help`, and ./configure is interactive. Cleaning
+# a tree nobody has configured yet should not open a prompt.
+#
+# Hence the gate. The list is inverted on purpose: a goal is assumed to need the
+# configuration unless it is named here, so a new build target is correct by
+# default instead of silently building against no config at all.
+#
+# The default goal is all, so an empty MAKECMDGOALS has to be spelled out for the
+# comparison to mean what it looks like. The comparison is against the whole
+# goal list, so `make clean kernel` still configures -- cleaning a tree and
+# building in one command has to work.
+CONFIG_FREE_GOALS := clean distclean help
+GOALS := $(or $(MAKECMDGOALS),all)
+
+ifeq ($(filter $(GOALS),$(CONFIG_FREE_GOALS)),$(GOALS))
+  CONFIG_SKIP := 1
+endif
+
+ifneq ($(CONFIG_SKIP),1)
+  -include $(CONFIG_MK)
+endif
+
+# --------------------------------------------------
+# Build profile
+# --------------------------------------------------
 
 ifeq ($(CONFIG_PROFILE),release)
 # Release: optimise, and ship no debug info at all. -fno-omit-frame-pointer is
@@ -165,6 +201,18 @@ C_SOURCES := $(shell find \
 	\) \
 	-not -path '$(INCLUDE_DIR)/*')
 
+# Deliberately no per-option source filtering here, e.g. dropping ahci.c when
+# CONFIG_AHCI=0. It is the obvious way to make --disable-AHCI shrink the binary,
+# and it is wrong: the source list is computed from config.mk while make parses,
+# but config.h is what the compiler reads, and ./configure rewrites the two
+# together. A build that starts with only one of the pair missing then disagrees
+# with itself -- the list omits ahci.c while the preprocessor still emits the
+# call to init_ahci() -- and the failure is a link error far from the cause.
+#
+# Drivers gate themselves with #if CONFIG_* instead. That is decided by the same
+# config.h the rest of the file is compiled against, so there is nothing to skew,
+# and a disabled driver still contributes no code and no strings.
+
 CPP_SOURCES := $(shell find \
 	$(KERNEL_DIR) \
 	-type f \
@@ -241,26 +289,60 @@ all: iso
 kernel: $(TARGET)
 
 # Build-time configuration. Run ./configure to change it; a fresh checkout has
-# no config.h, so fall back to the Kconfig defaults rather than failing and
-# making the first build a two step affair.
+# neither generated file, so fall back to the Kconfig defaults rather than
+# failing and making the first build a two step affair.
 #
-# This deliberately never overwrites an existing config.h. Otherwise editing
-# Kconfig, or simply running make twice, would silently discard choices made by
+# Both files are produced by the same ./configure run and have to agree with
+# each other, so the rule is written on the pair, not on config.h alone.
+#
+# That matters because they are consumed at two different times. config.mk is
+# -included, so the Makefile reads it while parsing, before any target runs;
+# config.h is read by the compiler, later. Regenerating only one of them lets
+# the two disagree, and a disagreement is now a link error rather than a
+# surprise: with config.mk saying AHCI=0 and config.h saying AHCI=1, the C
+# compiler emits a call to init_ahci() and the source list has left ahci.c out
+# of the build. Making config.mk a target as well fixes that from both ends --
+# make rewrites it, notices an included makefile changed, and re-executes itself
+# before compiling anything, so both files are re-read consistently.
+#
+# This deliberately never overwrites an existing pair. Otherwise editing Kconfig,
+# or simply running make twice, would silently discard choices made by
 # ./configure. `make distclean` is the way to start over.
-$(CONFIG_H):
-	@echo "  CONF    no $(CONFIG_H), using Kconfig defaults"
-	@./configure
+#
+# The guard is what makes that hold under a forced rebuild. Without it, `make
+# -B` re-runs this recipe regardless of the files existing, and since
+# ./configure is interactive it would block a build that is supposed to be
+# unattended.
+#
+# This has to be ONE logical line, not three. Make runs each recipe line in a
+# separate shell, so an `exit 0` on its own line only ends that line's shell and
+# the following lines still run -- which is exactly the bug this is guarding
+# against. The backslashes keep it in a single shell, where exit really does skip
+# the rest.
+#
+# The test covers the pair, not $@, because the two are generated together: if
+# either is missing the other cannot be trusted.
+$(CONFIG_H) $(CONFIG_MK):
+	@if [ -f $(CONFIG_H) ] && [ -f $(CONFIG_MK) ]; then exit 0; fi; \
+	echo "  CONF    no config.h/config.mk, using Kconfig defaults"; \
+	./configure
 
 # Generate compile_commands.json for clangd (editor IntelliSense)
 # bear only records compilations that actually run. If everything is already
 # built, "make kernel" is a no-op and bear leaves behind an EMPTY
 # compile_commands.json, which sends clangd off with a default command line
 # that has none of the kernel's include paths -- so every file reports bogus
-# errors. -B forces the rebuild that gives bear something to record, and the
-# check below makes a failure loud instead of silently poisoning the editor.
-db: $(CONFIG_H)
+# errors.
+#
+# Deleting $(BUILD_DIR) is how the rebuild is forced. Do NOT reach for make -B
+# here: -B re-runs *every* rule, including the $(CONFIG_H) rule below, and
+# ./configure is interactive, so -B drops the build into a config prompt that
+# then hangs. Removing the objects rebuilds exactly the compilations bear needs
+# to record and nothing else.
+db: $(CONFIG_FILES)
 	@rm -f compile_commands.json
-	bear -- make -B kernel
+	@rm -rf $(BUILD_DIR)
+	bear -- make kernel
 	@grep -q '"file"' compile_commands.json 2>/dev/null || { \
 		echo "make db: compile_commands.json is empty -- clangd will not work" >&2; \
 		exit 1; \
@@ -271,10 +353,12 @@ db: $(CONFIG_H)
 # C
 # --------------------------------------------------
 
-# $(CONFIG_H) is a normal prerequisite, not order-only, on purpose: changing a
-# option has to force a recompile of everything. If it were order-only, toggling
-# --disable-DEBUG would relink the existing objects and change nothing.
-$(BUILD_DIR)/%.c.o: $(KERNEL_DIR)/%.c $(CONFIG_H)
+# $(CONFIG_H) and $(CONFIG_MK) are normal prerequisites, not order-only, on
+# purpose: changing an option has to force a recompile of everything. If they
+# were order-only, toggling --disable-DEBUG would relink the existing objects
+# and change nothing. See the rule for the pair further down.
+
+$(BUILD_DIR)/%.c.o: $(KERNEL_DIR)/%.c $(CONFIG_FILES)
 	@mkdir -p $(dir $@)
 	@echo "  CC      $<"
 	@$(CC) $(CFLAGS) -c $< -o $@
@@ -325,7 +409,7 @@ $(BUILD_DIR)/%.asm.o: $(KERNEL_DIR)/%.asm
 # Link kernel
 # --------------------------------------------------
 
-$(TARGET): $(OBJECTS) linker.ld $(CONFIG_H)
+$(TARGET): $(OBJECTS) linker.ld $(CONFIG_FILES)
 	@mkdir -p $(dir $@)
 	@echo "  LD      $@"
 	@$(LD) $(LDFLAGS) -o $@ $(OBJECTS)
@@ -376,7 +460,36 @@ iso: $(TARGET) limine.conf
 # Run with UEFI / OVMF
 # --------------------------------------------------
 
-run: iso
+# One disk behind the AHCI controller the q35 southbridge already provides.
+#
+# This exists so there is a real drive to find, not just a controller. QEMU's
+# q35 machine already has an ICH9 AHCI controller (PCI 8086:2922, at 00:1f.2),
+# so without this the kernel's AHCI branch runs against a controller with
+# nothing plugged into it and reports an empty port list.
+#
+# Deliberately NOT -device ich9-ahci. Adding an explicit controller gives a
+# *second* AHCI device, and pci_enumrate.c maps every class 01/06/01 device onto
+# the one fixed address ABAR_MMIO -- so the second controller would silently
+# overwrite the first one's mapping. Attaching to the existing bus keeps it at
+# one device, which is what that code can actually cope with.
+#
+# bus=ide.0 is the IDE bus the southbridge's AHCI controller exports. Its ABAR
+# is BAR5 at config offset 0x24, which is what pci_enumrate.c reads.
+#
+# The disk is a blank file on purpose. Nothing in the kernel reads from it yet
+# -- it just has to exist so the controller reports a real LBA range.
+QEMU_SATA := \
+	-drive if=none,id=sata0,file=$(SATA_IMG),format=raw \
+	-device ide-hd,drive=sata0,bus=ide.0
+
+# 64 MiB: big enough to look like a real disk, small enough that it costs
+# nothing. Unformatted, and nothing mounts it yet.
+$(SATA_IMG):
+	@mkdir -p $(BUILD_DIR)
+	@truncate -s 64M $@
+	@echo "  SATA    $@ (64M, blank scratch disk)"
+
+run: iso $(SATA_IMG)
 	@echo "  RUN     Pinx in QEMU"
 
 	@cp $(OVMF_VARS) $(BUILD_DIR)/OVMF_VARS.fd
@@ -387,7 +500,8 @@ run: iso
 		-enable-kvm \
 		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE) \
 		-drive if=pflash,format=raw,file=$(BUILD_DIR)/OVMF_VARS.fd \
-		-cdrom $(ISO)
+		-cdrom $(ISO) \
+		$(QEMU_SATA)
 
 # Same as run, but stops on the first CPU exception so gdb can show you where
 # it happened instead of the kernel spinning in its exception handler.
@@ -395,7 +509,7 @@ run: iso
 #   make debug        # in one terminal
 #   gdb -ex 'target remote :1234' build/kernel.elf
 #   (gdb) c
-debug: iso
+debug: iso $(SATA_IMG)
 	@echo "  DEBUG   Pinx under gdb on :1234"
 
 	@cp $(OVMF_VARS) $(BUILD_DIR)/OVMF_VARS.fd
@@ -410,7 +524,8 @@ debug: iso
 		-dfilter 0x1 \
 		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE) \
 		-drive if=pflash,format=raw,file=$(BUILD_DIR)/OVMF_VARS.fd \
-		-cdrom $(ISO)
+		-cdrom $(ISO) \
+		$(QEMU_SATA)
 
 # --------------------------------------------------
 # Clean

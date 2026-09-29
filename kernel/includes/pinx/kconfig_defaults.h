@@ -28,3 +28,5 @@
 /* Tag each log line with its level */
 #define CONFIG_DEFAULT_LOG_LEVEL "info"
 /* Log level at boot */
+#define CONFIG_AHCI 1
+/* Set up an AHCI controller when one is detected on PCI */

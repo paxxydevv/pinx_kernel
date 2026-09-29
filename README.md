@@ -116,8 +116,11 @@ generated; the Makefile needs the second one because `make` treats every
 ./configure --log-level=debug      # lower the runtime threshold
 ```
 
-Choices persist in `config.cache`, so later invocations only change what you
-name. The current state is always visible with `make help`.
+An option is either named on the command line or it sits at its `Kconfig`
+default. Nothing is inherited from a previous run, so the result depends only on
+the command line and `Kconfig` — `--enable-DEBUG` never quietly carries a
+stale `--disable-LOG_TAGS` along with it. The current state is always visible
+with `make help`.
 
 | Option               | Default | Effect                                          |
 | -------------------- | ------- | ----------------------------------------------- |

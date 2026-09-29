@@ -12,8 +12,10 @@
 #   ./configure --disable-DEBUG
 #   ./configure --help
 #
-# Re-running never clobbers choices you made by hand: the existing config.h is
-# read back in and used as the starting point. Use `make distclean` to forget it.
+# An option is either named on the command line or it is at its Kconfig
+# default. Nothing is inherited from a previous run, so the result depends only
+# on the command line and ./Kconfig. `make distclean` throws the generated
+# files away.
 
 set -eu
 
@@ -119,23 +121,6 @@ OPTFILE=$(mktemp "${TMPDIR:-/tmp}/pinx-configure.XXXXXX") || die "cannot create 
 trap 'rm -f "$OPTFILE"' EXIT INT TERM
 printf '%s\n' "$OPTIONS" > "$OPTFILE"
 
-# ---------------------------------------------------------------- load cache
-#
-# config.cache holds NAME=value for whatever the last run settled on.
-
-load_cache() {
-    CACHE_VALUES=""
-    if [ -f "$CACHE" ]; then
-        # Values are y/n for bools and a bare word for strings, so match any
-        # single token rather than just y|n.
-        CACHE_VALUES=$(grep -E '^[A-Za-z_][A-Za-z0-9_]*=[A-Za-z0-9_-]+$' "$CACHE" || true)
-    fi
-}
-
-cached_value() {
-    echo "$CACHE_VALUES" | grep "^$1=" | tail -n 1 | cut -d= -f2 || true
-}
-
 # Is $2 one of the space separated words in $1? ("-" means "no constraint")
 value_allowed() {
     [ "$1" = "-" ] && return 0
@@ -145,6 +130,8 @@ value_allowed() {
     return 1
 }
 
+# Written for humans and for diffing, never read back: the precedence chain
+# has no cache step, so configure is a pure function of (command line, Kconfig).
 save_cache() {
     mkdir -p "$OUTDIR"
     : > "$CACHE"
@@ -175,13 +162,28 @@ for arg in "$@"; do
         -h|--help)
             want_help=1
             ;;
-        --enable-*)
+        --enable-*|--disable-*)
             MODE=explicit
-            EXPLICIT="$EXPLICIT ${arg#--enable-}"
-            ;;
-        --disable-*)
-            MODE=explicit
-            EXPLICIT="$EXPLICIT -${arg#--disable-}"
+            ename=$(printf '%s' "$arg" | tr 'a-z' 'A-Z')
+            ename=${ename#--ENABLE-}
+            ename=${ename#--DISABLE-}
+            # Validate the name here. The string branch below does this, but
+            # these two used to skip straight to the catch-all and record
+            # whatever they were given, so `--enable-smp` (or any typo) was
+            # accepted and quietly did nothing. A flag that cannot fail is
+            # worse than no flag: you think you enabled something.
+            eline=$(awk -F'|' -v n="$ename" '$1 == n { print; exit }' "$OPTFILE")
+            if [ -z "$eline" ]; then
+                die "unknown option: $arg (try --help)"
+            fi
+            etype=$(printf '%s' "$eline" | cut -d'|' -f2)
+            if [ "$etype" != bool ]; then
+                die "$ename is a string option; use --$ename=<value>, not $arg"
+            fi
+            case "$arg" in
+                --enable-*) EXPLICIT="$EXPLICIT $ename" ;;
+                *)          EXPLICIT="$EXPLICIT -$ename" ;;
+            esac
             ;;
         # --name=value sets a string option. The name is matched
         # case-insensitively, and may be either the symbol name or one of the
@@ -267,7 +269,6 @@ fi
 
 # ---------------------------------------------------------------- apply values
 
-load_cache
 
 # Seed every option so the `depends on` lookups below never hit an unset
 # variable, which `set -u` would treat as fatal.
@@ -290,21 +291,24 @@ done
 
 exec 3< "$OPTFILE"
 while IFS='|' read -r name type prompt def vals deps alias <&3; do
-    # Precedence: explicit command line > previous run > Kconfig default.
+    # Precedence: explicit command line > Kconfig default.
+    #
+    # There is deliberately no third step. configure used to fall back to
+    # config.cache, which meant an option you did not name on the command line
+    # kept whatever the last run happened to pick -- so `./configure
+    # --enable-DEBUG` silently inherited a stale `--disable-LOG_TAGS` from
+    # three runs ago. An option is either set here or it is at its default;
+    # nothing is inherited. See the note on the cache file below.
     value=""
     case " $EXPLICIT " in
         *" $name "*)  value=y ;;
         *" -$name "*) value=n ;;
     esac
     if [ -z "$value" ]; then
-        value=$(cached_value "$name")
-    fi
-    if [ -z "$value" ]; then
         value=$def
     fi
-    # A string option set with --name=value must beat the cached value, the
-    # same way --enable-OPTION beats it for a bool. Checked after the cache
-    # above purely because the cache is only consulted when nothing is set.
+    # A string option set with --name=value has to be picked up here rather
+    # than through $EXPLICIT, which only carries bools.
     if [ "$type" = string ]; then
         for pair in $EXPLICIT_VALUES; do
             case "$pair" in

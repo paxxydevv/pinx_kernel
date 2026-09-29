@@ -90,3 +90,19 @@ config DEFAULT_LOG_LEVEL
 
 	  Errors are exempt: KERROR is printed at every level except none, and
 	  panic() always prints regardless.
+
+config AHCI
+	bool "Set up an AHCI controller when one is detected on PCI"
+	default y
+	help
+	  pci_enumerate() probes any class 01/06/01 device found on the bus, maps
+	  its ABAR and runs init_ahci() on every port reporting a device. Turning
+	  this off removes that whole path: the controller is still listed during
+	  enumeration, but nothing is mapped and no port is programmed.
+
+	  Useful while the AHCI driver is in progress, and for the case where the
+	  fixed ABAR_MMIO window cannot cope with the controller that is present --
+	  two AHCI devices would both be mapped onto the same virtual address.
+
+	  --disable-AHCI also drops kernel/drivers/ahci.c from the build, so the
+	  code and its strings are gone rather than merely unreached.
