@@ -38,6 +38,17 @@ ROOTFS_IMG    := $(BUILD_DIR)/rootfs.ext4
 
 LIMINE_DIR := limine-binary
 
+# Limine's prebuilt bootloader: the UEFI application the ISO boots from and the
+# El Torito image that the firmware loads before it. They come from the "binary"
+# asset of a GitHub release, so a fresh clone has neither and would fail at the
+# ISO step. The fetch target below checks for them first and downloads only what
+# is missing, so a tree that already has them never touches the network.
+#
+# Override with `make LIMINE_VERSION=12.9.3` to pick up a different release.
+LIMINE_VERSION ?= 12.8.0
+LIMINE_URL     := https://github.com/Limine-Bootloader/Limine/releases/download/v$(LIMINE_VERSION)/limine-binary.zip
+LIMINE_FILES   := $(LIMINE_DIR)/BOOTX64.EFI $(LIMINE_DIR)/limine-uefi-cd.bin
+
 # OVMF firmware, whose paths differ between distributions.
 #
 # QEMU's own edk2 build splits the firmware: the x86_64 descriptor at
@@ -67,7 +78,7 @@ OVMF_VARS := $(firstword \
 	$(wildcard /usr/share/qemu/ovmf-x86_64-vars.bin) \
 )
 
-.PHONY: all iso kernel disk init run debug clean distclean help
+.PHONY: all iso kernel disk init run debug limine-fetch clean distclean help
 
 all: run
 
@@ -90,11 +101,38 @@ kernel: $(KERNEL)
 $(KERNEL): force
 	$(CARGO) build
 
+# Download the Limine binaries unless they are already there. Kept as one shell
+# command with the guard first so a tree that has them pays only a stat.
+limine-fetch:
+	@if [ ! -f $(LIMINE_DIR)/BOOTX64.EFI ] || [ ! -f $(LIMINE_DIR)/limine-uefi-cd.bin ]; then \
+		command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1 || { \
+			echo "make: need curl or wget to fetch Limine" >&2; exit 1; \
+		}; \
+		command -v unzip >/dev/null 2>&1 || { \
+			echo "make: need unzip to unpack Limine" >&2; exit 1; \
+		}; \
+		mkdir -p $(BUILD_DIR) $(LIMINE_DIR); \
+		echo "  FETCH   Limine v$(LIMINE_VERSION)"; \
+		if command -v curl >/dev/null 2>&1; then \
+			curl -sSL -o $(BUILD_DIR)/limine-binary.zip "$(LIMINE_URL)" || { \
+				echo "make: download of $(LIMINE_URL) failed" >&2; exit 1; \
+			}; \
+		else \
+			wget -q -O $(BUILD_DIR)/limine-binary.zip "$(LIMINE_URL)" || { \
+				echo "make: download of $(LIMINE_URL) failed" >&2; exit 1; \
+			}; \
+		fi; \
+		unzip -q -o $(BUILD_DIR)/limine-binary.zip -d $(BUILD_DIR) || exit 1; \
+		cp -R $(BUILD_DIR)/limine-binary/. $(LIMINE_DIR)/ || exit 1; \
+		rm -rf $(BUILD_DIR)/limine-binary $(BUILD_DIR)/limine-binary.zip; \
+		echo "  FETCH   $(LIMINE_FILES)"; \
+	fi
+
 # --------------------------------------------------
 # Bootable ISO
 # --------------------------------------------------
 
-iso: kernel
+iso: kernel limine-fetch
 	@mkdir -p $(ISO_ROOT)/EFI/BOOT $(ISO_ROOT)/boot
 	@cp $(KERNEL) $(ISO_ROOT)/boot/kernel.elf
 	@cp $(LIMINE_DIR)/BOOTX64.EFI $(ISO_ROOT)/EFI/BOOT/BOOTX64.EFI

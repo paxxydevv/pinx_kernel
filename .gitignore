@@ -1,24 +1,39 @@
 # Build artifacts
 build/
+target/
 
 # ISO staging directory
 IsoRoot/
 
-
-
 # Output binaries
 *.iso
 *.elf
+*.img
+*.fd
 *.bin
+
+# Downloaded Limine bootloader payloads. The Makefile's `limine-fetch` target
+# pulls these from the GitHub release when they are missing, so they do not
+# belong in history; the sources (limine.c, Makefile, LICENSE, the .h) stay.
+limine-binary/*.EFI
+limine-binary/*.efi
+limine-binary/*.bin
+limine-binary/*.sys
+limine-binary/*.exe
+limine-binary/limine
+limine-binary/limine-tool-windows-x86/
 
 # Editor / IDE
 .vscode/
 .cache
 .idea/
+.clangd/
 *.swp
 *.swo
 *~
 compile_commands.json
+qodana.yaml
+
 # OS files
 .DS_Store
 Thumbs.db
@@ -28,3 +43,6 @@ Thumbs.db
 *.a
 *.so
 include/generated/
+
+# Logs
+*.log
