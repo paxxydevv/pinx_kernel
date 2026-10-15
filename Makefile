@@ -86,11 +86,11 @@ all: run
 # disk target picks it up; they are real targets rather than .PHONY so `make
 # disk` does not relink three projects on every invocation.
 build/init: force
-	@$(MAKE) --no-print-directory -C ../pinx_init install
+	@$(MAKE) --no-print-directory -C pinx_init install
 	@touch $@
 
 build/hello: force
-	@$(MAKE) --no-print-directory -C ../pinx_hello install
+	@$(MAKE) --no-print-directory -C pinx_hello install
 	@touch $@
 
 .PHONY: force

@@ -1,0 +1,17 @@
+[package]
+name = "pinx_hello"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "hello"
+path = "src/main.rs"
+
+[dependencies]
+pinx_libc = { path = "../pinx_libc" }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
