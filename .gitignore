@@ -13,15 +13,9 @@ IsoRoot/
 *.bin
 
 # Downloaded Limine bootloader payloads. The Makefile's `limine-fetch` target
-# pulls these from the GitHub release when they are missing, so they do not
-# belong in history; the sources (limine.c, Makefile, LICENSE, the .h) stay.
-limine-binary/*.EFI
-limine-binary/*.efi
-limine-binary/*.bin
-limine-binary/*.sys
-limine-binary/*.exe
-limine-binary/limine
-limine-binary/limine-tool-windows-x86/
+# pulls the whole release asset when they are missing, so nothing here belongs in
+# history -- not even the sources that ship inside the same zip.
+limine-binary/
 
 # Editor / IDE
 .vscode/
