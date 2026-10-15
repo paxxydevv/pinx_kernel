@@ -1,0 +1,40 @@
+[package]
+name = "pinx"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[[bin]]
+name = "pinx"
+path = "src/main.rs"
+
+# Compile-time configuration.
+#
+# These replace the old Kconfig/./configure pair. An option that is off is
+# removed from the build entirely: every log macro expands to nothing, and the
+# AHCI driver is not compiled, so nothing of it reaches the binary.
+#
+#   cargo build --no-default-features --features debug
+#   cargo build --features debug-pci
+#
+# debug-pci / debug-heap / log-tags only take effect together with `debug`.
+# The runtime threshold that filters what is *printed* is chosen at build time
+# with the PINX_LOG_LEVEL environment variable (trace|debug|info|warn|error|none).
+[features]
+default = ["debug", "debug-pci", "debug-heap", "log-tags", "ahci"]
+debug = []
+debug-pci = []
+debug-heap = []
+log-tags = []
+ahci = []
+
+[profile.dev]
+panic = "abort"
+opt-level = 0
+debug = 2
+
+[profile.release]
+panic = "abort"
+opt-level = 2
+debug = false
+lto = true
