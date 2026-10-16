@@ -1,5 +1,5 @@
 # Pinx
-
+# CRITICAL PROJECT TRANSFORIMING TO RUST BASED ONLY NOW
 A bare-metal x86-64 operating system kernel built from scratch using C and x86 assembly. Boots via the [Limine](https://limine-bootloader.org/) bootloader on UEFI systems.
 
 ## Features
